@@ -1,0 +1,217 @@
+// Stage 2: page layout. Finds text columns, strips running headers, footers and
+// page numbers (remembering the printed page number), and orders everything in
+// reading order.
+
+import type { Rect } from "../model.ts";
+import type { FontStats, Line } from "./lines.ts";
+import { percentile } from "./lines.ts";
+
+export interface Column {
+  x0: number;
+  x1: number;
+}
+
+export interface PageLayout {
+  columns: Column[];
+  /** x position between two columns, if the page has two. */
+  gutter?: number;
+}
+
+/** Ordinary text lines (body text, references, notes), not headings or labels. */
+function isTextLike(l: Line, stats: FontStats): boolean {
+  return l.size >= stats.bodySize * 0.7 && l.size <= stats.bodySize * 1.15 && l.text.length >= 15;
+}
+
+export function detectLayout(lines: Line[], stats: FontStats, pageW: number): PageLayout | null {
+  const body = lines.filter((l) => isTextLike(l, stats));
+  if (body.length < 6) return null;
+  const left = percentile(
+    body.map((l) => l.x0),
+    0.05,
+  );
+  const right = percentile(
+    body.map((l) => l.x1),
+    0.95,
+  );
+  const mid = (left + right) / 2;
+  const L = body.filter((l) => l.x1 < mid + 3);
+  const R = body.filter((l) => l.x0 > mid - 3);
+  const span = body.length - L.length - R.length;
+  if (L.length >= 3 && R.length >= 3 && span <= 0.2 * (L.length + R.length)) {
+    const gl = percentile(
+      L.map((l) => l.x1),
+      0.9,
+    );
+    const gr = percentile(
+      R.map((l) => l.x0),
+      0.1,
+    );
+    if (gr > gl) {
+      return {
+        columns: [
+          { x0: left, x1: gl },
+          { x0: gr, x1: right },
+        ],
+        gutter: (gl + gr) / 2,
+      };
+    }
+  }
+  return { columns: [{ x0: Math.min(left, pageW), x1: right }] };
+}
+
+/**
+ * Pages that look single-column on their own may still follow the book's
+ * two-column grid (for example a page of small-print references): adopt it
+ * when almost no line crosses the gutter.
+ */
+export function fitLayout(lines: Line[], own: PageLayout | null, dominant: PageLayout, stats: FontStats): PageLayout {
+  if (own && own.columns.length === 2) return own;
+  if (dominant.gutter === undefined) return own ?? dominant;
+  const g = dominant.gutter;
+  const text = lines.filter((l) => isTextLike(l, stats));
+  if (text.length < 4) return own ?? dominant;
+  const crossing = text.filter((l) => l.x0 < g - 3 && l.x1 > g + 3).length;
+  const right = text.filter((l) => l.x0 >= g - 3).length;
+  if (crossing <= text.length * 0.1 && right >= 2) return dominant;
+  return own ?? dominant;
+}
+
+/** The most common layout, for pages with too little text to decide on their own. */
+export function dominantLayout(layouts: (PageLayout | null)[], pageW: number): PageLayout {
+  const two = layouts.filter((l): l is PageLayout => !!l && l.columns.length === 2);
+  const one = layouts.filter((l): l is PageLayout => !!l && l.columns.length === 1);
+  const pick = (ls: PageLayout[], n: number): PageLayout => {
+    const cols: Column[] = [];
+    for (let i = 0; i < n; i++)
+      cols.push({
+        x0: percentile(
+          ls.map((l) => l.columns[i].x0),
+          0.5,
+        ),
+        x1: percentile(
+          ls.map((l) => l.columns[i].x1),
+          0.5,
+        ),
+      });
+    return n === 2 ? { columns: cols, gutter: (cols[0].x1 + cols[1].x0) / 2 } : { columns: cols };
+  };
+  if (two.length > one.length) return pick(two, 2);
+  if (one.length) return pick(one, 1);
+  return { columns: [{ x0: pageW * 0.1, x1: pageW * 0.9 }] };
+}
+
+/** Splits lines that cross the gutter at a gap (two columns that happened to merge). */
+export function splitAtGutter(lines: Line[], layout: PageLayout, rebuild: (runs: Line["runs"], from: Line) => Line): Line[] {
+  if (layout.gutter === undefined) return lines;
+  const g = layout.gutter;
+  const out: Line[] = [];
+  for (const l of lines) {
+    if (l.x0 < g && l.x1 > g && l.runs.length > 1) {
+      const leftRuns = l.runs.filter((r) => r.x + r.w <= g + 1);
+      const rightRuns = l.runs.filter((r) => r.x >= g - 1);
+      if (leftRuns.length && rightRuns.length && leftRuns.length + rightRuns.length === l.runs.length) {
+        out.push(rebuild(leftRuns, l), rebuild(rightRuns, l));
+        continue;
+      }
+    }
+    out.push(l);
+  }
+  return out;
+}
+
+export interface Furniture {
+  /** Line keys (page:index) to drop. */
+  drop: Set<Line>;
+  /** Printed page labels found on pages. */
+  labels: Map<number, string>;
+}
+
+const PAGE_NUM_RE = /^(?:page\s+)?(\d{1,4}|[ivxlcdm]{1,7})$/i;
+
+/**
+ * Running headers, footers and page numbers live in the top and bottom margins
+ * and repeat their style and position on many pages.
+ */
+export function findFurniture(pages: { lines: Line[]; h: number }[], stats: FontStats): Furniture {
+  const band = (l: Line, h: number): "top" | "bottom" | null => (l.bottom < h * 0.085 ? "top" : l.top > h * 0.915 ? "bottom" : null);
+  const key = (l: Line, b: string) => `${b}|${l.font}|${Math.round(l.size)}|${Math.round(l.y / 4)}`;
+  const counts = new Map<string, number>();
+  pages.forEach((p) => {
+    const keys = new Set<string>();
+    for (const l of p.lines) {
+      const b = band(l, p.h);
+      if (b) keys.add(key(l, b));
+    }
+    for (const k of keys) counts.set(k, (counts.get(k) ?? 0) + 1);
+  });
+  const minPages = Math.max(3, Math.ceil(pages.length * 0.04));
+  const drop = new Set<Line>();
+  const labels = new Map<number, string>();
+  pages.forEach((p, pi) => {
+    for (const l of p.lines) {
+      const b = band(l, p.h);
+      if (!b) continue;
+      const text = l.text.trim();
+      const isNum = PAGE_NUM_RE.test(text) && l.size <= stats.bodySize * 1.3;
+      if (isNum || (counts.get(key(l, b)) ?? 0) >= minPages) {
+        drop.add(l);
+        if (isNum) labels.set(pi, text.replace(/^page\s+/i, ""));
+      }
+    }
+  });
+  return { drop, labels };
+}
+
+/** Anything that takes part in reading order: a line, or a figure/table/box region. */
+export interface Placed {
+  rect: Rect;
+}
+
+/**
+ * Orders items in reading order: full-width items split the page into bands;
+ * inside a band the left column is read before the right one.
+ */
+export function readingOrder<T extends Placed>(items: T[], layout: PageLayout): T[] {
+  if (layout.gutter === undefined) return [...items].sort((a, b) => a.rect.y0 - b.rect.y0 || a.rect.x0 - b.rect.x0);
+  const g = layout.gutter;
+  const colOf = (it: T): 0 | 1 | -1 => (it.rect.x1 <= g + 3 ? 0 : it.rect.x0 >= g - 3 ? 1 : -1);
+  const spans = items.filter((it) => colOf(it) === -1).sort((a, b) => a.rect.y0 - b.rect.y0);
+  const out: T[] = [];
+  let remaining = items.filter((it) => colOf(it) !== -1);
+  const flushBand = (limitY: number) => {
+    const band = remaining.filter((it) => it.rect.y0 < limitY);
+    remaining = remaining.filter((it) => it.rect.y0 >= limitY);
+    const byY = (a: T, b: T) => a.rect.y0 - b.rect.y0 || a.rect.x0 - b.rect.x0;
+    out.push(...band.filter((it) => colOf(it) === 0).sort(byY), ...band.filter((it) => colOf(it) === 1).sort(byY));
+  };
+  for (const s of spans) {
+    flushBand(s.rect.y0);
+    out.push(s);
+  }
+  flushBand(Infinity);
+  return out;
+}
+
+export function lineRect(l: Line): Rect {
+  return { x0: l.x0, y0: l.top, x1: l.x1, y1: l.bottom };
+}
+
+export function union(a: Rect, b: Rect): Rect {
+  return { x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0), x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1) };
+}
+
+export function overlapX(a: Rect, b: Rect): number {
+  return Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0));
+}
+
+export function overlapY(a: Rect, b: Rect): number {
+  return Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0));
+}
+
+export function area(r: Rect): number {
+  return Math.max(0, r.x1 - r.x0) * Math.max(0, r.y1 - r.y0);
+}
+
+export function contains(outer: Rect, inner: Rect, pad = 0): boolean {
+  return inner.x0 >= outer.x0 - pad && inner.x1 <= outer.x1 + pad && inner.y0 >= outer.y0 - pad && inner.y1 <= outer.y1 + pad;
+}

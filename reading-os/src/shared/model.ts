@@ -1,0 +1,205 @@
+// The structured, reflowable form of a book. The PDF extractor produces it,
+// the reader renders it, and the AI features read from it. Every block keeps
+// the page and rectangle it came from so the original page can always be shown.
+
+/** Bump whenever extraction output changes so cached books are re-extracted. */
+export const EXTRACTOR_VERSION = 1;
+
+/** Rectangle in PDF points, origin at the top-left of the page. */
+export interface Rect {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+export interface Span {
+  text: string;
+  i?: boolean;
+  b?: boolean;
+  /** Superscript that is not a citation (e.g. exponents, footnote marks). */
+  sup?: boolean;
+  /** Citation numbers pointing into the chapter's reference list. */
+  cite?: number[];
+  /** Cross-reference to a figure, table or box key, e.g. "Fig 1-1". */
+  xref?: string;
+  /** Zero-based page index for "see page 138" style references. */
+  pageRef?: number;
+}
+
+interface BlockBase {
+  id: string;
+  /** Zero-based index of the PDF page where the block starts. */
+  page: number;
+  rect: Rect;
+  /** Index into BookDoc.chapters. */
+  chapter: number;
+}
+
+export interface HeadingBlock extends BlockBase {
+  kind: "heading";
+  level: 1 | 2 | 3 | 4;
+  text: string;
+  /** Chapter number shown above a level-1 heading, e.g. "2". */
+  number?: string;
+}
+
+export interface ParagraphBlock extends BlockBase {
+  kind: "paragraph";
+  spans: Span[];
+  /** Set for text noticeably smaller than body text (notes, sources). */
+  small?: boolean;
+}
+
+export interface ListBlock extends BlockBase {
+  kind: "list";
+  ordered: boolean;
+  items: Span[][];
+}
+
+export interface FigureBlock extends BlockBase {
+  kind: "figure";
+  /** "Fig 1-1"; absent for uncaptioned images. */
+  key?: string;
+  caption: Span[];
+  /** Text found inside the figure (diagram labels), kept for search and AI. */
+  labels?: string;
+}
+
+export interface TablePart {
+  page: number;
+  rect: Rect;
+}
+
+export interface TableBlock extends BlockBase {
+  kind: "table";
+  key: string;
+  caption: Span[];
+  /** Cell text, row-major. The first `headerRows` rows are column headers. */
+  rows: string[][];
+  headerRows: number;
+  /** Where the table sits in the original, possibly across several pages. */
+  parts: TablePart[];
+  notes: Span[][];
+}
+
+export interface BoxBlock extends BlockBase {
+  kind: "box";
+  key: string;
+  title: Span[];
+  body: (ParagraphBlock | ListBlock)[];
+  parts: TablePart[];
+}
+
+/** Author-written highlights such as "Key Points" or "Learning Objectives". */
+export interface CalloutBlock extends BlockBase {
+  kind: "callout";
+  title: string;
+  items: Span[][];
+}
+
+export interface ReferenceEntry {
+  n: number;
+  text: string;
+}
+
+export interface ReferencesBlock extends BlockBase {
+  kind: "references";
+  title: string;
+  items: ReferenceEntry[];
+}
+
+/** Back-of-book index or similar long lists, shown collapsed. */
+export interface IndexBlock extends BlockBase {
+  kind: "index";
+  title: string;
+  lines: string[];
+}
+
+export type Block =
+  | HeadingBlock
+  | ParagraphBlock
+  | ListBlock
+  | FigureBlock
+  | TableBlock
+  | BoxBlock
+  | CalloutBlock
+  | ReferencesBlock
+  | IndexBlock;
+
+export interface PageInfo {
+  w: number;
+  h: number;
+  /** The page number printed on the page ("vi", "36"), or the PDF index + 1. */
+  label: string;
+}
+
+export interface TocEntry {
+  id: string;
+  title: string;
+  level: number;
+  blockId: string;
+  page: number;
+}
+
+export interface Chapter {
+  title: string;
+  number?: string;
+  /** Index of the first block of the chapter in BookDoc.blocks. */
+  start: number;
+  end: number;
+  /** Citation number → reference text for this chapter. */
+  refs: Record<number, string>;
+}
+
+export interface BookStats {
+  bodySize: number;
+  bodyFont: string;
+  words: number;
+  figures: number;
+  tables: number;
+  boxes: number;
+  noiseRuns: number;
+  ms: number;
+}
+
+export interface BookDoc {
+  version: number;
+  id: string;
+  title: string;
+  author?: string;
+  fileName: string;
+  pageCount: number;
+  pages: PageInfo[];
+  blocks: Block[];
+  toc: TocEntry[];
+  chapters: Chapter[];
+  stats: BookStats;
+}
+
+export function spansText(spans: Span[]): string {
+  return spans.map((s) => s.text).join("");
+}
+
+/** Plain text of a block, used for search, AI context and word counts. */
+export function blockText(b: Block): string {
+  switch (b.kind) {
+    case "heading":
+      return b.text;
+    case "paragraph":
+      return spansText(b.spans);
+    case "list":
+    case "callout":
+      return b.items.map(spansText).join("\n");
+    case "figure":
+      return [b.key, spansText(b.caption)].filter(Boolean).join(" ");
+    case "table":
+      return [b.key, spansText(b.caption), ...b.rows.map((r) => r.join(" | "))].join("\n");
+    case "box":
+      return [b.key, spansText(b.title), ...b.body.map(blockText)].join("\n");
+    case "references":
+      return b.items.map((r) => `${r.n}. ${r.text}`).join("\n");
+    case "index":
+      return b.lines.join("\n");
+  }
+}
