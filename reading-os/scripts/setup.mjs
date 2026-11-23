@@ -22,5 +22,6 @@ if (!installed) {
   console.log("Electron is ready.");
 }
 
+spawnSync(process.execPath, [path.join(root, "scripts/patch-pdfjs.mjs")], { stdio: "inherit", cwd: root });
 const r = spawnSync(process.execPath, [path.join(root, "scripts/copy-pdfjs-assets.mjs")], { stdio: "inherit", cwd: root });
 process.exit(r.status ?? 0);

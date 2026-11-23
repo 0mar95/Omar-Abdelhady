@@ -1,6 +1,7 @@
 // Entry point: PDF bytes → BookDoc. Works in the browser (renderer) and in Node
 // (tests and the command-line extractor); the caller passes in pdf.js.
 
+import { repairPrivateGlyphs } from "./glyphs.ts";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import type { BookDoc } from "../model.ts";
 import { analyzeBook } from "./analyze.ts";
@@ -35,6 +36,8 @@ export async function extractFromDocument(
   } catch {
     /* metadata is optional */
   }
+  // Ligatures drawn with private glyphs ("e\uE01Aects") get their letters back.
+  repairPrivateGlyphs(raw);
   const book = analyzeBook(raw, { ...meta, title, author }, started);
   onProgress?.({ phase: "analyzing", done: 1, total: 1 });
   return book;

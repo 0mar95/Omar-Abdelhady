@@ -41,6 +41,9 @@ Build an installer with `npm run dist:mac` or `npm run dist:win`.
 - Real paragraphs: line-break hyphens, ligatures, two-column order, and
   sentences that continue across columns, pages and figures are repaired.
 - Running headers, footers, page numbers, watermarks and stamped banners removed.
+- Scrambled text repaired: PDFs whose fonts name glyphs in lower case
+  ("u006b") or draw ligatures with private, unnamed glyphs read as normal
+  text (each font's private glyphs are worked out from the book's own words).
 - Headings and chapters detected, with a full table of contents (**T**); the
   book's own contents page becomes a clean list you can click to jump.
 - Figures cropped from the original at high resolution (click to zoom).

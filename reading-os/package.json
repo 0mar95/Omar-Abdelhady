@@ -7,9 +7,9 @@
   "type": "module",
   "main": "out/main/index.js",
   "scripts": {
-    "postinstall": "node scripts/copy-pdfjs-assets.mjs",
+    "postinstall": "node scripts/patch-pdfjs.mjs && node scripts/copy-pdfjs-assets.mjs",
     "dev": "node scripts/setup.mjs && electron-vite dev",
-    "build": "node scripts/copy-pdfjs-assets.mjs && electron-vite build",
+    "build": "node scripts/patch-pdfjs.mjs && node scripts/copy-pdfjs-assets.mjs && electron-vite build",
     "preview": "node scripts/setup.mjs && electron-vite preview",
     "web": "node scripts/copy-pdfjs-assets.mjs && vite --config vite.web.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
