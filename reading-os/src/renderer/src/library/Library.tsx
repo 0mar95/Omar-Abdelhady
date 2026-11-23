@@ -7,7 +7,7 @@ import { platform } from "../platform";
 import { useLibrary, type LibraryEntry } from "../state/library";
 import { useReader } from "../state/reader";
 import { useSettings } from "../state/settings";
-import { IconOpen, IconSearch } from "../ui/icons";
+import { IconOpen, IconSearch, IconTrash } from "../ui/icons";
 
 const isMac = navigator.platform.toLowerCase().includes("mac");
 
@@ -271,44 +271,61 @@ function ShelfBook({ e, onOpen }: { e: LibraryEntry; onOpen(): void }) {
   const pct = Math.round(e.progress * 100);
   const finished = e.progress >= 0.99;
   const fresh = !e.position && pct === 0;
+  const [confirming, setConfirming] = useState(false);
   const remove = () => {
     useLibrary.getState().remove(e.id);
     removeCover(e.id);
   };
+  const finder = isMac ? "Show in Finder" : "Show file";
   return (
-    <div className="group flex flex-col gap-2.5">
+    <div className="group flex flex-col gap-2.5" onMouseLeave={() => setConfirming(false)}>
       <div className="relative">
         <button type="button" onClick={onOpen} aria-label={`Open ${e.title}`} className="block w-full transition group-hover:-translate-y-0.5">
           <Cover e={e} className="aspect-[2/3] w-full" />
         </button>
-        {fresh && <span className="pointer-events-none absolute right-2 top-2 rounded-full bg-[#e08a5f] px-2 py-0.5 text-[10px] font-semibold text-[#2a1d16]">New</span>}
-        {finished && (
-          <span className="pointer-events-none absolute right-2 top-2 grid size-[22px] place-items-center rounded-full bg-paper text-[var(--accent)]" title="Finished">
-            <svg aria-hidden width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
-              <path d="m5 12 5 5 9-10" />
-            </svg>
-          </span>
-        )}
-        {/* Actions appear on hover (and keyboard focus) instead of a stray × button. */}
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col gap-1.5 rounded-b-[7px] bg-gradient-to-t from-black/80 via-black/60 to-transparent p-2.5 pt-12 opacity-0 transition group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100">
-          <button type="button" onClick={onOpen} className="h-[30px] rounded-lg bg-[#f6efe2] text-[12px] font-semibold text-[#3a2f23] hover:bg-white">
-            {pct > 0 && !finished ? "Continue" : "Open"}
-          </button>
-          <div className="flex gap-1.5">
-            {platform.showFile && e.path && (
-              <button
-                type="button"
-                onClick={() => platform.showFile!(e.path!)}
-                className="h-7 flex-1 rounded-lg bg-white/20 text-[11px] text-[#f6efe2] hover:bg-white/30"
-              >
-                {isMac ? "Show in Finder" : "Show file"}
-              </button>
-            )}
-            <button type="button" onClick={remove} className="h-7 flex-1 rounded-lg bg-white/20 text-[11px] text-[#f6efe2] hover:bg-white/30" aria-label={`Remove ${e.title} from library`}>
-              Remove
-            </button>
-          </div>
+        {/* Status badges make way for the actions on hover. */}
+        <span className="pointer-events-none absolute right-2 top-2 transition group-focus-within:opacity-0 group-hover:opacity-0">
+          {fresh && <span className="rounded-full bg-[#e08a5f] px-2 py-0.5 text-[10px] font-semibold text-[#2a1d16]">New</span>}
+          {finished && (
+            <span className="grid size-[22px] place-items-center rounded-full bg-paper text-[var(--accent)]" title="Finished">
+              <svg aria-hidden width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+                <path d="m5 12 5 5 9-10" />
+              </svg>
+            </span>
+          )}
+        </span>
+        {/* Two round icon buttons in the corner, each labelled on hover. */}
+        <div className="absolute right-2 top-2 flex -translate-y-0.5 gap-1.5 opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100">
+          {platform.showFile && e.path && (
+            <CoverAction label={finder} onClick={() => platform.showFile!(e.path!)}>
+              <svg aria-hidden width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+              </svg>
+            </CoverAction>
+          )}
+          <CoverAction label="Remove from library" danger onClick={() => setConfirming(true)}>
+            <IconTrash size={15} />
+          </CoverAction>
         </div>
+        {confirming && (
+          <div
+            role="alertdialog"
+            aria-label={`Remove ${e.title} from library?`}
+            className="absolute inset-x-2 bottom-2 rounded-xl bg-card p-3 text-[12.5px] leading-snug text-ink-2 shadow-[var(--shadow)] ring-1 ring-rule"
+          >
+            <p className="m-0">
+              <strong className="font-semibold text-ink">Remove from library?</strong> The file stays on your {isMac ? "Mac" : "computer"}.
+            </p>
+            <div className="mt-2.5 flex gap-1.5">
+              <button type="button" autoFocus onClick={() => setConfirming(false)} className="h-8 flex-1 rounded-lg bg-paper-2 font-medium text-ink hover:bg-rule">
+                Cancel
+              </button>
+              <button type="button" onClick={remove} className="h-8 flex-1 rounded-lg bg-[#a33a2b] font-semibold text-white hover:brightness-110">
+                Remove
+              </button>
+            </div>
+          </div>
+        )}
       </div>
       <Progress value={e.progress} />
       <div className="text-[12px] leading-snug text-ink-3">
@@ -316,6 +333,25 @@ function ShelfBook({ e, onOpen }: { e: LibraryEntry; onOpen(): void }) {
         {fresh ? "New" : finished ? "Finished" : `${pct}%`} · {fmt(e) === "pdf" ? `${e.pageCount} pages` : readingTime(e.words)} · {ago(e.openedAt)}
       </div>
     </div>
+  );
+}
+
+/** A round icon button on a cover, with its name shown below it on hover. */
+function CoverAction({ label, danger, onClick, children }: { label: string; danger?: boolean; onClick(): void; children: React.ReactNode }) {
+  return (
+    <span className="group/action relative">
+      <button
+        type="button"
+        aria-label={label}
+        onClick={onClick}
+        className={`grid size-[30px] place-items-center rounded-full bg-[#f6efe2]/95 shadow-[0_2px_6px_rgb(0_0_0/0.2)] hover:bg-white ${danger ? "text-[#a33a2b]" : "text-[#3a2f23]"}`}
+      >
+        {children}
+      </button>
+      <span className="pointer-events-none absolute right-0 top-[36px] z-10 whitespace-nowrap rounded-md bg-[#3a2f23] px-2 py-1 text-[11.5px] text-[#f6efe2] opacity-0 transition group-hover/action:opacity-100 group-focus-within/action:opacity-100">
+        {label}
+      </span>
+    </span>
   );
 }
 
