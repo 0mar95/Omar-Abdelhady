@@ -5,6 +5,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import type { ChatRequest } from "../shared/ipc";
 import * as ollama from "./ollama";
 
+// One name everywhere, so settings and the book cache live in the same
+// folder however the app is launched (~/Library/Application Support/Reading OS).
+app.setName("Reading OS");
+
 // The packaged UI is served from app://reading-os/ (a standard, secure origin)
 // so ES-module workers such as pdf.js work exactly as they do in development.
 protocol.registerSchemesAsPrivileged([

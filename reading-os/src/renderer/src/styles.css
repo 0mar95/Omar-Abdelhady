@@ -248,6 +248,7 @@ button {
 }
 .book .xref,
 .book .pageref {
+  white-space: nowrap;
   color: var(--link);
   text-decoration: underline;
   text-decoration-color: color-mix(in srgb, var(--link) 35%, transparent);
