@@ -29,6 +29,8 @@ export interface Settings {
   glossaryMarks: boolean;
   /** Search and questions only use the book up to the reading position. */
   spoilerLimit: boolean;
+  /** Offer a recap when a book is reopened after a break. */
+  catchUp: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -46,6 +48,7 @@ export const DEFAULT_SETTINGS: Settings = {
   marginNotes: true,
   glossaryMarks: true,
   spoilerLimit: false,
+  catchUp: true,
 };
 
 interface SettingsStore extends Settings {

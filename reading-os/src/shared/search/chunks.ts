@@ -136,7 +136,8 @@ export function noteSections(book: BookDoc, minWords = 90): NoteSection[] {
   const paths = sectionPaths(book);
   const out: NoteSection[] = [];
   // In books with numbered chapters, front matter (preface, contributors) gets no notes.
-  const numbered = book.chapters.some((c) => c.number);
+  // Most chapters must be numbered: one stray number shouldn't silence the rest.
+  const numbered = book.chapters.filter((c) => c.number).length * 2 > book.chapters.length;
   book.blocks.forEach((b, i) => {
     if (b.kind !== "heading" || b.level < 2 || b.level > 3) return;
     if (numbered && !book.chapters[b.chapter]?.number) return;

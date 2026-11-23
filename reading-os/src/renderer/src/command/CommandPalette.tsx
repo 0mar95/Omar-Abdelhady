@@ -10,6 +10,7 @@ import type { ChatHandle } from "../platform";
 import { askBooks, searchBooks } from "../search";
 import { useGlossary } from "../state/glossary";
 import { useLibrary } from "../state/library";
+import { openRecap } from "../state/recap";
 import { pageText, useReader } from "../state/reader";
 import { useSettings, type Theme } from "../state/settings";
 import { IconBook, IconChevron, IconCopy, IconImage, IconList, IconPage, IconSearch, IconSparkle, IconToc, IconType } from "../ui/icons";
@@ -145,6 +146,9 @@ export function CommandPalette({ onOpenFile, onLibrary }: { onOpenFile(): void; 
       commands.push(
         { id: "c-toc", group: "Commands", title: "Table of contents", icon: <IconToc />, run: () => setOverlay("toc") },
         { id: "c-glossary", group: "Commands", title: "Glossary (A–Z)", icon: <IconList />, run: () => setOverlay("glossary") },
+        { id: "c-recap", group: "Commands", title: "Catch me up (recap where I left off)", icon: <IconSparkle />, run: () => openRecap("recent") },
+        { id: "c-recap-ch", group: "Commands", title: "Recap this chapter so far", icon: <IconSparkle />, run: () => openRecap("chapter") },
+        { id: "c-recap-book", group: "Commands", title: "Recap the book so far", icon: <IconSparkle />, run: () => openRecap("book") },
         { id: "c-type", group: "Commands", title: "Reading settings (font, size, theme, AI)", icon: <IconType />, run: () => setOverlay("type") },
         {
           id: "c-view",

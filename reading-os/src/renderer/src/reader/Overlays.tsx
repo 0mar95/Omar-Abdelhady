@@ -169,6 +169,7 @@ export function TypePanel() {
               <Toggle label="Margin notes (section summaries)" value={s.marginNotes} onChange={(v) => s.set({ marginNotes: v })} />
             </>
           )}
+          <Toggle label="Catch me up when I come back to a book" value={s.catchUp} onChange={(v) => s.set({ catchUp: v })} />
           <p className="mb-0 mt-2 text-[11.5px] leading-snug text-ink-3">
             {aiError
               ? `${aiError} Install it from ollama.com, then run “ollama pull ${s.model}”.`

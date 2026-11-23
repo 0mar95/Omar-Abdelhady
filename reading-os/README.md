@@ -107,6 +107,15 @@ are written in the background for the section you're in and the next few,
 and saved; click a concept to search the book for it. Turn them off in
 Reading settings or from ⌘K.
 
+**Catch me up** — reopen a book after a few hours away and a recap greets
+you where you stopped: what you read most recently, the sections just before
+it, and a **Continue reading** button. Switch between **Where I left off**,
+**This chapter** and **Book so far**. Recaps are written only from the text
+before your position (nothing ahead is spoiled), use the margin notes already
+written for earlier sections, and are saved, so reopening at the same place is
+instant. Press **R** or use ⌘K any time; turn the automatic recap off in
+Reading settings.
+
 Everything stays on your machine: books are read from disk, the extracted book
 is cached locally, and the AI only talks to Ollama on `localhost`.
 
@@ -117,6 +126,7 @@ is cached locally, and the AI only talks to Ollama on `localhost`.
 | ⌘K / Ctrl K | Search, jump, commands, ask |
 | T | Table of contents |
 | G | Glossary (A–Z) |
+| R | Catch me up (recap of what you've read) |
 | V | Clean view ↔ original pages |
 | [ / ] | Previous / next chapter |
 | ⌘+ / ⌘− | Text size |
@@ -198,6 +208,7 @@ reading-os/
    ├─ preload/index.ts         the small, typed bridge (window.readingOS)
    ├─ shared/
    │  ├─ model.ts              the book format (blocks, chapters, TOC)
+   │  ├─ recap.ts              what a "catch me up" recap is written from
    │  ├─ ipc.ts                main ↔ renderer contract
    │  ├─ pdf/                  the extraction pipeline (+ tests)
    │  ├─ formats/              EPUB, Word, HTML, Markdown and text → the same book format
@@ -229,9 +240,9 @@ npm run typecheck
 
 - Done: reflowed reader, inline AI, hybrid search across the library, cited
   answers with a reading-position limit, margin notes, glossary with hover
-  definitions and cross-book mentions; EPUB, Word, HTML, Markdown and text.
-- Next: section recaps and "catch me up" when reopening a book.
-- Figure descriptions with a vision model, so figures are searchable.
+  definitions and cross-book mentions; EPUB, Word, HTML, Markdown and text;
+  "catch me up" recaps.
+- Next: figure descriptions with a vision model, so figures are searchable.
 - OCR for scanned PDFs (`glm-ocr`), and older Kindle files (MOBI/AZW3).
 
 Books you open are never committed to this repository (`*.pdf` is ignored).
