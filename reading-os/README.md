@@ -24,6 +24,9 @@ computer. No chat side panel: help appears inside the text, where you need it.
    npm run dev
    ```
 
+   The first `npm run dev` also downloads Electron itself (about 100 MB,
+   one time only): Electron 45+ no longer fetches it during `npm install`.
+
 4. Click **Open PDF** (or drop a PDF on the window). The first open of a book
    takes a few seconds (≈8 s for a 370-page textbook); after that it opens
    instantly from the cache.

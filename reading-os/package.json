@@ -8,9 +8,9 @@
   "main": "out/main/index.js",
   "scripts": {
     "postinstall": "node scripts/copy-pdfjs-assets.mjs",
-    "dev": "electron-vite dev",
+    "dev": "node scripts/setup.mjs && electron-vite dev",
     "build": "node scripts/copy-pdfjs-assets.mjs && electron-vite build",
-    "preview": "electron-vite preview",
+    "preview": "node scripts/setup.mjs && electron-vite preview",
     "web": "node scripts/copy-pdfjs-assets.mjs && vite --config vite.web.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
