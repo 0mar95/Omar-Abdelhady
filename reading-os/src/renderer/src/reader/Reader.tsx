@@ -11,6 +11,8 @@ import { Hovercards } from "./Hovercards";
 import { GlossarySheet } from "./GlossarySheet";
 import { TocSheet, TypePanel, ZoomOverlay } from "./Overlays";
 import { PageView } from "./PageView";
+import { RecapPanel } from "./RecapPanel";
+import { openRecap } from "../state/recap";
 import { SelectionMenu } from "./SelectionMenu";
 
 const WPM = 230;
@@ -58,7 +60,7 @@ export function Reader({ onOpenFile, onLibrary }: { onOpenFile(): void; onLibrar
     };
   }, []);
 
-  // Keyboard: ⌘K palette, T contents, G glossary, V view, [ ] chapters, ⌘+/⌘- size.
+  // Keyboard: ⌘K palette, T contents, G glossary, R recap, V view, [ ] chapters, ⌘+/⌘- size.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
@@ -90,6 +92,9 @@ export function Reader({ onOpenFile, onLibrary }: { onOpenFile(): void; onLibrar
       } else if (e.key === "g") {
         e.preventDefault();
         setOverlay("glossary");
+      } else if (e.key === "r") {
+        e.preventDefault();
+        openRecap();
       } else if (e.key === "v") setView(useReader.getState().view === "clean" ? "page" : "clean");
       else if (e.key === "]" || e.key === "[") {
         const cur = ix.byId.get(useReader.getState().currentBlock ?? "") ?? 0;
@@ -161,6 +166,7 @@ export function Reader({ onOpenFile, onLibrary }: { onOpenFile(): void; onLibrar
       {overlay === "toc" && <TocSheet />}
       {overlay === "glossary" && <GlossarySheet />}
       {overlay === "type" && <TypePanel />}
+      {overlay === "recap" && <RecapPanel />}
       {overlay === "palette" && <CommandPalette onOpenFile={onOpenFile} onLibrary={onLibrary} />}
       <ZoomOverlay />
     </div>

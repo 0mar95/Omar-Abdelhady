@@ -102,9 +102,13 @@ const mockMode = () => new URLSearchParams(location.search).has("mockAI") || use
 
 /** Offline stand-in used by automated tests (?mockAI) so the UI can be exercised without Ollama. */
 function mockChat(messages: ChatMessage[], onText: (t: string) => void): ChatHandle {
-  const sel = /Selected passage:\n"""([\s\S]*?)"""/.exec(messages[1].content)?.[1] ?? "";
+  const recap = /Most recently read text[^\n]*\n"""([\s\S]*?)"""/.exec(messages[1].content);
+  const sel = recap?.[1] ?? /Selected passage:\n"""([\s\S]*?)"""/.exec(messages[1].content)?.[1] ?? "";
   const words = sel.split(/\s+/).filter((w) => w.length > 6).slice(0, 4);
-  const text = `**In short:** this passage is about ${words.map((w) => w.replace(/[^\w-]/g, "")).join(", ") || "the topic at hand"}.\n\n- It introduces the idea and why it matters here.\n- It links back to the surrounding section.\n\n_(Demo answer — connect Ollama for real explanations.)_`;
+  const heads = [...sel.matchAll(/^## (.+)$/gm)].map((m) => m[1]).slice(-3);
+  const text = recap
+    ? `${(heads.length ? heads : ["the recent pages"]).map((h) => `- You read about **${h}**.`).join("\n")}\n- Key words along the way: ${words.map((w) => w.replace(/[^\w-]/g, "")).join(", ") || "none"}.\n\nYou stopped as the text was building on that. _(Demo recap — connect Ollama for a real one.)_`
+    : `**In short:** this passage is about ${words.map((w) => w.replace(/[^\w-]/g, "")).join(", ") || "the topic at hand"}.\n\n- It introduces the idea and why it matters here.\n- It links back to the surrounding section.\n\n_(Demo answer — connect Ollama for real explanations.)_`;
   let stopped = false;
   const done = (async () => {
     for (const piece of text.match(/\S+\s*/g) ?? []) {

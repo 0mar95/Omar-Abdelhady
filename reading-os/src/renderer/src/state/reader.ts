@@ -4,14 +4,16 @@ import type { OpenedFile } from "../../../shared/ipc";
 import { blockText, type Block, type BookDoc } from "../../../shared/model";
 import type { ExtractProgress } from "../../../shared/pdf/extract";
 import { countWords } from "../../../shared/pdf/text";
+import { CATCH_UP_AFTER_MS } from "../../../shared/recap";
 import { bookIdFor, loadOrExtract, openPdf } from "../pdf";
 import { platform } from "../platform";
 import { useLibrary, type LibraryEntry } from "./library";
 import { setGlossaryContext, useGlossary } from "./glossary";
 import { reportPosition, useNotes } from "./notes";
+import { useSettings } from "./settings";
 
 export type View = "clean" | "page";
-export type Overlay = null | "toc" | "type" | "palette" | "glossary";
+export type Overlay = null | "toc" | "type" | "palette" | "glossary" | "recap";
 
 /** Lookups derived once per book. */
 export interface BookIndex {
@@ -77,6 +79,8 @@ interface ReaderStore {
   currentBlock: string | null;
   currentPage: number;
   jump: JumpTarget | null;
+  /** How long the reader had been away when this book was reopened mid-way (null for a fresh start). */
+  awayMs: number | null;
   openFile(file: OpenedFile): Promise<void>;
   openEntry(entry: LibraryEntry): Promise<void>;
   close(): void;
@@ -103,6 +107,7 @@ export const useReader = create<ReaderStore>((set, get) => ({
   currentBlock: null,
   currentPage: 0,
   jump: null,
+  awayMs: null,
 
   async openFile(file) {
     set({ status: "loading", progress: { phase: "reading", done: 0, total: 1 }, error: null, overlay: null });
@@ -130,6 +135,10 @@ export const useReader = create<ReaderStore>((set, get) => ({
       void get().doc?.loadingTask.destroy();
       const ix = indexBook(book);
       const start = entry.position && ix.byId.has(entry.position) ? entry.position : book.blocks[0]?.id;
+      // Coming back mid-book after a while: offer a recap of what was read.
+      const resuming = !!existing?.position && start === existing.position && (ix.byId.get(start) ?? 0) > 0 && existing.progress > 0.002;
+      const awayMs = resuming ? Date.now() - existing!.openedAt : null;
+      const catchUp = awayMs !== null && awayMs > CATCH_UP_AFTER_MS && useSettings.getState().catchUp;
       set({
         status: "ready",
         book,
@@ -140,6 +149,8 @@ export const useReader = create<ReaderStore>((set, get) => ({
         currentBlock: start ?? null,
         currentPage: start ? book.blocks[ix.byId.get(start)!].page : 0,
         jump: start ? { blockId: start, nonce: Date.now() } : null,
+        awayMs,
+        overlay: catchUp ? "recap" : null,
       });
       // Index for search and start margin notes around where the reader is.
       void useNotes.getState().open(id, book.title, start ? ix.byId.get(start) ?? 0 : 0);
