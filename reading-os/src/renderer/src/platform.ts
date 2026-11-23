@@ -37,6 +37,8 @@ export interface Platform {
   /** Keeps the bytes (web) or the path (desktop) so the book can be reopened. */
   rememberBook(id: string, file: OpenedFile): Promise<void>;
   loadBook(id: string, path?: string): Promise<Uint8Array | null>;
+  /** Reveals the book's file; null where there is no file system (browser). */
+  showFile: ((path: string) => void) | null;
   cacheGet(key: string): Promise<string | null>;
   cacheSet(key: string, value: string): Promise<void>;
   stateGet<T>(key: string): Promise<T | null>;
@@ -77,6 +79,7 @@ function electronPlatform(api: ReadingOSApi): Platform {
     async loadBook(_id, path) {
       return path ? api.readFile(path) : null;
     },
+    showFile: (path) => void api.showFile(path),
     cacheGet: (k) => api.cacheGet(k),
     cacheSet: (k, v) => api.cacheSet(k, v),
     stateGet: async <T,>(k: string) => (await api.stateGet(k)) as T | null,
@@ -174,6 +177,7 @@ function webPlatform(): Platform {
     },
     rememberBook: (id, file) => kvSet(`bytes:${id}`, file.bytes),
     loadBook: (id) => kvGet<Uint8Array>(`bytes:${id}`),
+    showFile: null,
     cacheGet: (k) => kvGet<string>(`cache:${k}`),
     cacheSet: (k, v) => kvSet(`cache:${k}`, v),
     stateGet: <T,>(k: string) => kvGet<T>(`state:${k}`),

@@ -5,6 +5,7 @@ import { blockText, type Block, type BookDoc } from "../../../shared/model";
 import type { ExtractProgress } from "../../../shared/pdf/extract";
 import { countWords } from "../../../shared/pdf/text";
 import { detectFormat } from "../../../shared/formats";
+import { ensureCover } from "../covers";
 import { loadOrConvert, setBookFiles } from "../formats";
 import { bookIdFor, loadOrExtract, openPdf } from "../pdf";
 import { platform } from "../platform";
@@ -143,10 +144,12 @@ export const useReader = create<ReaderStore>((set, get) => ({
         openedAt: Date.now(),
         progress: existing?.progress ?? 0,
         position: existing?.position,
+        author: book.author,
       };
       lib.upsert(entry);
       void get().doc?.loadingTask.destroy();
       setBookFiles(files);
+      void ensureCover(book, doc);
       const ix = indexBook(book);
       const start = entry.position && ix.byId.has(entry.position) ? entry.position : book.blocks[0]?.id;
       set({
@@ -221,10 +224,27 @@ export const useReader = create<ReaderStore>((set, get) => ({
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       const progress = ix.totalWords ? Math.min(1, ix.wordsBefore[i] / ix.totalWords) : 0;
-      useLibrary.getState().update(entry.id, { position: blockId, progress, openedAt: Date.now() });
+      useLibrary.getState().update(entry.id, { position: blockId, progress, openedAt: Date.now(), ...whereAt(book, ix, i) });
     }, 600);
   },
 }));
+
+const WPM = 230;
+
+/** Chapter, time left in it and printed page at a block, for the library's "Continue reading". */
+export function whereAt(book: BookDoc, ix: BookIndex, i: number): { chapterTitle?: string; chapterNumber?: string; minutesLeft: number; pageLabel?: string } {
+  const b = book.blocks[i];
+  const ch = book.chapters[b?.chapter ?? 0];
+  const end = Math.min(ch?.end ?? book.blocks.length, book.blocks.length);
+  const left = (end < book.blocks.length ? ix.wordsBefore[end] : ix.totalWords) - ix.wordsBefore[i];
+  const sameAsBook = ch?.title?.trim().toLowerCase() === book.title.trim().toLowerCase();
+  return {
+    chapterTitle: ch && !sameAsBook && ch.title !== "Front matter" ? ch.title : undefined,
+    chapterNumber: ch?.number,
+    minutesLeft: Math.max(0, Math.round(left / WPM)),
+    pageLabel: b ? book.pages[b.page]?.label || undefined : undefined,
+  };
+}
 
 export function blockAt(book: BookDoc, ix: BookIndex, id: string | null): Block | undefined {
   if (!id) return undefined;

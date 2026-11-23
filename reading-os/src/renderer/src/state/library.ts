@@ -17,6 +17,12 @@ export interface LibraryEntry {
   /** 0..1 */
   progress: number;
   position?: string;
+  author?: string;
+  /** Where the reader is, for the "Continue reading" card. */
+  chapterTitle?: string;
+  chapterNumber?: string;
+  minutesLeft?: number;
+  pageLabel?: string;
 }
 
 interface LibraryStore {

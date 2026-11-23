@@ -5,6 +5,7 @@ const api: ReadingOSApi = {
   platform: process.platform,
   openPdfDialog: () => ipcRenderer.invoke("file:open-dialog"),
   readFile: (path) => ipcRenderer.invoke("file:read", path),
+  showFile: (path) => ipcRenderer.invoke("file:show", path),
   pathForFile: (file) => webUtils.getPathForFile(file),
   cacheGet: (key) => ipcRenderer.invoke("cache:get", key),
   cacheSet: (key, value) => ipcRenderer.invoke("cache:set", key, value),

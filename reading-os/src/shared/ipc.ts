@@ -39,6 +39,8 @@ export interface ReadingOSApi extends LibraryApi, GlossaryApi {
   platform: string;
   openPdfDialog(): Promise<OpenedFile | null>;
   readFile(path: string): Promise<Uint8Array | null>;
+  /** Shows the book's file in Finder / Explorer. */
+  showFile(path: string): Promise<void>;
   /** Path of a File dropped onto the window. */
   pathForFile(file: File): string;
   cacheGet(key: string): Promise<string | null>;

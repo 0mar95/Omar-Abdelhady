@@ -48,6 +48,9 @@ function safeKey(key: string): string {
   return key.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
 }
 
+/** Book files the renderer may ask to read back or reveal. */
+const BOOK_FILE = /\.(pdf|epub|docx|html?|xhtml|md|markdown|txt)$/i;
+
 const PAPER: Record<string, string> = { light: "#fbfaf7", sepia: "#f6efe2", dark: "#1c1b19", black: "#000000" };
 
 function createWindow(): BrowserWindow {
@@ -161,12 +164,15 @@ function registerIpc(): void {
     return { path: file, name: path.basename(file), bytes: new Uint8Array(await fs.readFile(file)) };
   });
   ipcMain.handle("file:read", async (_e, file: string) => {
-    if (typeof file !== "string" || !file.toLowerCase().endsWith(".pdf")) return null;
+    if (typeof file !== "string" || !BOOK_FILE.test(file)) return null;
     try {
       return new Uint8Array(await fs.readFile(file));
     } catch {
       return null;
     }
+  });
+  ipcMain.handle("file:show", (_e, file: string) => {
+    if (typeof file === "string" && BOOK_FILE.test(file)) shell.showItemInFolder(file);
   });
   ipcMain.handle("cache:get", async (_e, key: string) => {
     try {
