@@ -40,7 +40,8 @@ Build an installer with `npm run dist:mac` or `npm run dist:win`.
 - Real paragraphs: line-break hyphens, ligatures, two-column order, and
   sentences that continue across columns, pages and figures are repaired.
 - Running headers, footers, page numbers, watermarks and stamped banners removed.
-- Headings and chapters detected, with a full table of contents (**T**).
+- Headings and chapters detected, with a full table of contents (**T**); the
+  book's own contents page becomes a clean list you can click to jump.
 - Figures cropped from the original at high resolution (click to zoom).
 - Tables rebuilt as real tables, merged across pages, with an **Original**
   toggle to see the printed version.
@@ -145,8 +146,14 @@ folder), using the SQLite built into Electron — no extra native modules:
   can be swapped in for very large libraries.
 - **Hybrid ranking:** both result lists are merged with Reciprocal Rank Fusion.
 - **Margin notes:** the section you're reading comes first, then the next few
-  ahead; each note is one structured-JSON request to the chat model. Background
-  work pauses whenever you're waiting on an answer.
+  ahead; each note is one structured-JSON request to the chat model.
+- **Background work stays out of the way:** it pauses while you're waiting on
+  an answer and while you scroll (on Apple silicon the models share the GPU
+  with the window, so running them mid-scroll makes scrolling stutter), and
+  embeds in small batches.
+- **New extractor versions** re-read a book once, but keep the vectors of
+  unchanged passages and the margin notes of unchanged headings. Block ids are
+  per page (`p12-3`), so a change on one page doesn't move the rest.
 - **Glossary:** terms are extracted without AI (`src/shared/glossary/`:
   Schwartz–Hearst for acronyms, italic terms in defining sentences, plural and
   proper-name handling). A hovered term's short definition jumps to the front

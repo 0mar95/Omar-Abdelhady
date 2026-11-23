@@ -21,7 +21,7 @@ function scanOpenBook(p: SearchParams): SearchHit[] {
   const hits: SearchHit[] = [];
   for (let i = 0; i < book.blocks.length && hits.length < (p.limit ?? 20); i++) {
     const b = book.blocks[i];
-    if (b.kind === "index" || b.kind === "heading" || b.kind === "references") continue;
+    if (b.kind === "index" || b.kind === "heading" || b.kind === "references" || b.kind === "contents") continue;
     if (p.maxBlock !== undefined && i > p.maxBlock) break;
     const text = ix.texts[i];
     const lower = text.toLowerCase();

@@ -8,7 +8,7 @@ import { useReader } from "../state/reader";
 import { useSettings } from "../state/settings";
 import { InlineCard } from "./InlineCard";
 
-export function PageView({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement | null> }) {
+export const PageView = memo(function PageView({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement | null> }) {
   const book = useReader((s) => s.book)!;
   const ix = useReader((s) => s.ix)!;
   const jump = useReader((s) => s.jump);
@@ -86,7 +86,7 @@ export function PageView({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElem
       ))}
     </div>
   );
-}
+});
 
 const PageSlot = memo(function PageSlot({ index, width, aspect, label, filter }: { index: number; width: number; aspect: number; label: string; filter: string }) {
   const doc = useReader((s) => s.doc);
@@ -141,7 +141,8 @@ const PageSlot = memo(function PageSlot({ index, width, aspect, label, filter }:
     <div
       ref={ref}
       data-pdf-page={index}
-      className="relative rounded-[3px] bg-white shadow-[var(--shadow)]"
+      // Dark themes get a dark placeholder, so pages still loading don't flash white.
+      className={`relative rounded-[3px] shadow-[var(--shadow)] ${filter === "page-canvas-dark" ? "bg-paper-2" : "bg-white"}`}
       style={{ width, height }}
     >
       <canvas ref={canvasRef} className={`absolute inset-0 h-full w-full ${filter}`} />

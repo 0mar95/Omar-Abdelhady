@@ -1,8 +1,9 @@
 // The reflowed reading view: the whole book as clean, typographic text, with
 // AI cards woven in under the paragraphs they explain.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MarginNote } from "../../../shared/ipc";
+import type { Block } from "../../../shared/model";
 import { contextFor, useCards, type Card } from "../ai";
 import { useNotes } from "../state/notes";
 import { useReader } from "../state/reader";
@@ -11,7 +12,8 @@ import { BlockView } from "./BlockView";
 import { InlineCard } from "./InlineCard";
 import { GutterNote, InlineNote } from "./MarginNote";
 
-export function CleanView({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement | null> }) {
+/** Memoized: the reader's bars and progress update while scrolling without re-rendering the book. */
+export const CleanView = memo(function CleanView({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement | null> }) {
   const book = useReader((s) => s.book)!;
   const ix = useReader((s) => s.ix)!;
   const jump = useReader((s) => s.jump);
@@ -45,28 +47,40 @@ export function CleanView({ scrollRef }: { scrollRef: React.RefObject<HTMLDivEle
   }, [cards]);
 
   // Track the block at the reading line (a third of the way down the screen).
+  // A few times a second is plenty, and keeps hit-testing out of most frames.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    let frame = 0;
+    let timer = 0;
+    const probe = () => {
+      timer = 0;
+      const r = el.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height * 0.3);
+      const id = hit?.closest("[data-block]")?.getAttribute("data-block");
+      if (id && id !== lastReported.current) {
+        lastReported.current = id;
+        useReader.getState().setPosition(id);
+      }
+    };
     const onScroll = () => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        const r = el.getBoundingClientRect();
-        const probe = document.elementFromPoint(r.left + r.width / 2, r.top + r.height * 0.3);
-        const id = probe?.closest("[data-block]")?.getAttribute("data-block");
-        if (id && id !== lastReported.current) {
-          lastReported.current = id;
-          useReader.getState().setPosition(id);
-        }
-      });
+      if (!timer) timer = window.setTimeout(probe, 120);
     };
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => {
       el.removeEventListener("scroll", onScroll);
-      cancelAnimationFrame(frame);
+      clearTimeout(timer);
     };
   }, [scrollRef]);
+
+  // Book-style indents need to know which paragraphs run on from one another.
+  const flows = useMemo(() => {
+    const para = (b?: Block) => b?.kind === "paragraph" && !b.small;
+    return book.blocks.map((b, i) => {
+      if (!para(b)) return undefined;
+      const f = `${para(book.blocks[i - 1]) ? "jp" : ""} ${para(book.blocks[i + 1]) ? "jn" : ""}`.trim();
+      return f || undefined;
+    });
+  }, [book]);
 
   // Jumps from the table of contents, search, links and restored positions.
   useEffect(() => {
@@ -93,9 +107,12 @@ export function CleanView({ scrollRef }: { scrollRef: React.RefObject<HTMLDivEle
     };
   }, [jump, scrollRef]);
 
-  const regenerate = (card: Card) => {
-    useCards.getState().run(card.kind, card.blockId, card.quote, contextFor(book, ix, card.blockId, card.quote), card.question, card.id);
-  };
+  const regenerate = useCallback(
+    (card: Card) => {
+      useCards.getState().run(card.kind, card.blockId, card.quote, contextFor(book, ix, card.blockId, card.quote), card.question, card.id);
+    },
+    [book, ix],
+  );
 
   const style = {
     "--reader-font": FONTS[settings.font].css,
@@ -109,7 +126,7 @@ export function CleanView({ scrollRef }: { scrollRef: React.RefObject<HTMLDivEle
   return (
     <div className="reader px-6 pb-[40vh] pt-20 sm:px-12" style={style}>
       <article ref={articleRef} className={`book ${settings.indent ? "indented" : ""} ${gutter ? "with-gutter" : ""}`} lang="en">
-        {book.blocks.map((b) => {
+        {book.blocks.map((b, i) => {
           const label = settings.pageNumbers && b.page !== prevPage ? book.pages[b.page]?.label : undefined;
           prevPage = b.page;
           const attached = cardsByBlock.get(b.id);
@@ -120,6 +137,7 @@ export function CleanView({ scrollRef }: { scrollRef: React.RefObject<HTMLDivEle
               key={b.id}
               block={b}
               label={label}
+              flow={flows[i]}
               cards={attached}
               onRegenerate={regenerate}
               note={note}
@@ -132,19 +150,21 @@ export function CleanView({ scrollRef }: { scrollRef: React.RefObject<HTMLDivEle
       </article>
     </div>
   );
-}
+});
 
-function BlockWithCards({
+const BlockWithCards = memo(function BlockWithCards({
   block,
   label,
+  flow,
   cards,
   onRegenerate,
   note,
   working,
   gutter,
 }: {
-  block: Parameters<typeof BlockView>[0]["b"];
+  block: Block;
   label?: string;
+  flow?: string;
   cards?: Card[];
   onRegenerate(c: Card): void;
   note?: MarginNote;
@@ -154,12 +174,12 @@ function BlockWithCards({
   return (
     <>
       {gutter && <GutterNote note={note} working={!!working} level={block.kind === "heading" ? block.level : 2} />}
-      <BlockView b={block} pageLabel={label} />
+      <BlockView b={block} pageLabel={label} flow={flow} />
       {!gutter && <InlineNote note={note} />}
       {cards?.map((c) => <InlineCard key={c.id} card={c} onRegenerate={onRegenerate} />)}
     </>
   );
-}
+});
 
 /** Highlights search hits inside a block using the CSS Custom Highlight API. */
 function highlightIn(el: HTMLElement, query: string) {

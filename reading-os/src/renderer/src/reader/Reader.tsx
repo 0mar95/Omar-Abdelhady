@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useCards } from "../ai";
 import { CommandPalette } from "../command/CommandPalette";
+import { platform } from "../platform";
 import { useNotes } from "../state/notes";
 import { useReader } from "../state/reader";
 import { useSettings } from "../state/settings";
@@ -16,11 +17,12 @@ const WPM = 230;
 const isMac = navigator.platform.toLowerCase().includes("mac");
 
 export function Reader({ onOpenFile, onLibrary }: { onOpenFile(): void; onLibrary(): void }) {
+  // No subscription to the reading position here: the title and footer follow
+  // it on their own, so scrolling never re-renders the book.
   const book = useReader((s) => s.book)!;
   const ix = useReader((s) => s.ix)!;
   const view = useReader((s) => s.view);
   const overlay = useReader((s) => s.overlay);
-  const currentBlock = useReader((s) => s.currentBlock);
   const { setOverlay, setView, jumpTo } = useReader.getState();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [chrome, setChrome] = useState(true);
@@ -34,11 +36,18 @@ export function Reader({ onOpenFile, onLibrary }: { onOpenFile(): void; onLibrar
     const el = scrollRef.current;
     if (!el) return;
     let lastY = el.scrollTop;
+    let lastPing = 0;
     const onScroll = () => {
       const y = el.scrollTop;
       if (y < 80 || y < lastY - 8) setChrome(true);
       else if (y > lastY + 8) setChrome(false);
       lastY = y;
+      // Tell the background worker to hold off while scrolling (see main).
+      const now = performance.now();
+      if (now - lastPing > 400) {
+        lastPing = now;
+        platform.readerActivity();
+      }
     };
     const onMove = (e: MouseEvent) => e.clientY < 64 && setChrome(true);
     el.addEventListener("scroll", onScroll, { passive: true });
@@ -107,25 +116,11 @@ export function Reader({ onOpenFile, onLibrary }: { onOpenFile(): void; onLibrar
     if (cur) jumpTo({ blockId: cur });
   }, [view, jumpTo]);
 
-  const info = useMemo(() => {
-    const i = currentBlock ? ix.byId.get(currentBlock) ?? 0 : 0;
-    const b = book.blocks[i];
-    const ch = book.chapters[b?.chapter ?? 0];
-    const chEnd = Math.min(ch?.end ?? book.blocks.length, book.blocks.length);
-    const wordsLeft = (chEnd < book.blocks.length ? ix.wordsBefore[chEnd] : ix.totalWords) - ix.wordsBefore[i];
-    return {
-      chapter: ch,
-      percent: ix.totalWords ? Math.round((ix.wordsBefore[i] / ix.totalWords) * 100) : 0,
-      minutesLeft: Math.max(0, Math.round(wordsLeft / WPM)),
-      page: b ? book.pages[b.page]?.label : "",
-    };
-  }, [currentBlock, book, ix]);
-
   const showChrome = chrome || !!overlay;
   return (
     <div className="relative h-full">
       <header
-        className={`fixed inset-x-0 top-0 z-30 flex h-12 items-center gap-1 bg-paper/85 px-3 font-ui backdrop-blur-md transition-transform duration-300 [-webkit-app-region:drag] ${showChrome ? "translate-y-0" : "-translate-y-full"} ${isMac && window.readingOS ? "pl-20" : ""}`}
+        className={`fixed inset-x-0 top-0 z-30 flex h-12 items-center gap-1 border-b border-rule/70 bg-paper px-3 font-ui transition-transform duration-300 [-webkit-app-region:drag] ${showChrome ? "translate-y-0" : "-translate-y-full"} ${isMac && window.readingOS ? "pl-20" : ""}`}
       >
         <BarButton label="Library" onClick={onLibrary}>
           <IconLibrary />
@@ -133,16 +128,7 @@ export function Reader({ onOpenFile, onLibrary }: { onOpenFile(): void; onLibrar
         <BarButton label="Contents (T)" onClick={() => setOverlay("toc")}>
           <IconToc />
         </BarButton>
-        <div className="mx-2 min-w-0 flex-1 truncate text-center text-[12.5px]">
-          <span className="font-semibold text-ink">{book.title}</span>
-          {info.chapter?.title && (
-            <span className="text-ink-3">
-              {" "}
-              · {info.chapter.number ? `${info.chapter.number}. ` : ""}
-              {info.chapter.title}
-            </span>
-          )}
-        </div>
+        <ReaderTitle />
         <button
           type="button"
           onClick={() => setOverlay("palette")}
@@ -168,23 +154,7 @@ export function Reader({ onOpenFile, onLibrary }: { onOpenFile(): void; onLibrar
         {view === "clean" ? <CleanView scrollRef={scrollRef} /> : <PageView scrollRef={scrollRef} />}
       </div>
 
-      <footer
-        className={`pointer-events-none fixed inset-x-0 bottom-0 z-20 font-ui transition-opacity duration-300 ${showChrome ? "opacity-100" : "opacity-0"}`}
-      >
-        <div className="flex items-center justify-between px-5 pb-2 text-[11.5px] tabular-nums text-ink-3">
-          <span>
-            {info.minutesLeft > 0 ? `${info.minutesLeft} min left in chapter` : "End of chapter"}
-            {info.page ? ` · page ${info.page}` : ""}
-          </span>
-          <span>
-            <IndexProgress />
-            {info.percent}%
-          </span>
-        </div>
-        <div className="h-[3px] bg-rule/60">
-          <div className="h-full bg-accent transition-[width] duration-500" style={{ width: `${info.percent}%` }} />
-        </div>
-      </footer>
+      <ReaderFooter visible={showChrome} />
 
       <SelectionMenu scrollRoot={scrollRef} />
       <Hovercards root={scrollRef} />
@@ -223,6 +193,68 @@ function ViewButton({ active, label, onClick, children }: { active: boolean; lab
     >
       {children}
     </button>
+  );
+}
+
+/** Where the reader is, from the current block: chapter, progress, time left. */
+function useProgress() {
+  const book = useReader((s) => s.book)!;
+  const ix = useReader((s) => s.ix)!;
+  const currentBlock = useReader((s) => s.currentBlock);
+  return useMemo(() => {
+    const i = currentBlock ? ix.byId.get(currentBlock) ?? 0 : 0;
+    const b = book.blocks[i];
+    const ch = book.chapters[b?.chapter ?? 0];
+    const chEnd = Math.min(ch?.end ?? book.blocks.length, book.blocks.length);
+    const wordsLeft = (chEnd < book.blocks.length ? ix.wordsBefore[chEnd] : ix.totalWords) - ix.wordsBefore[i];
+    return {
+      chapter: ch,
+      percent: ix.totalWords ? Math.round((ix.wordsBefore[i] / ix.totalWords) * 100) : 0,
+      minutesLeft: Math.max(0, Math.round(wordsLeft / WPM)),
+      page: b ? book.pages[b.page]?.label : "",
+    };
+  }, [currentBlock, book, ix]);
+}
+
+function ReaderTitle() {
+  const title = useReader((s) => s.book!.title);
+  const { chapter } = useProgress();
+  // Front matter is often "chapter 0" named after the book itself: don't repeat it.
+  const same = chapter?.title && chapter.title.trim().toLowerCase() === title.trim().toLowerCase();
+  return (
+    <div className="mx-2 min-w-0 flex-1 truncate text-center text-[12.5px]">
+      <span className="font-semibold text-ink">{title}</span>
+      {chapter?.title && !same && (
+        <span className="text-ink-3">
+          {" "}
+          · {chapter.number ? `${chapter.number}. ` : ""}
+          {chapter.title}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function ReaderFooter({ visible }: { visible: boolean }) {
+  const info = useProgress();
+  return (
+    <footer
+      className={`pointer-events-none fixed inset-x-0 bottom-0 z-20 font-ui transition-opacity duration-300 ${visible ? "opacity-100" : "opacity-0"}`}
+    >
+      <div className="flex items-center justify-between px-5 pb-2 text-[11.5px] tabular-nums text-ink-3">
+        <span>
+          {info.minutesLeft > 0 ? `${info.minutesLeft} min left in chapter` : "End of chapter"}
+          {info.page ? ` · page ${info.page}` : ""}
+        </span>
+        <span>
+          <IndexProgress />
+          {info.percent}%
+        </span>
+      </div>
+      <div className="h-[3px] bg-rule/60">
+        <div className="h-full bg-accent transition-[width] duration-500" style={{ width: `${info.percent}%` }} />
+      </div>
+    </footer>
   );
 }
 

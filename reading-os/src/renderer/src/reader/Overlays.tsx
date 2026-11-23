@@ -103,7 +103,7 @@ export function TypePanel() {
         role="dialog"
         aria-label="Reading settings"
         onMouseDown={(e) => e.stopPropagation()}
-        className="scroll-quiet absolute right-4 top-14 max-h-[calc(100vh-5rem)] w-[340px] overflow-y-auto rounded-2xl bg-card p-4 font-ui text-[13px] shadow-[var(--shadow)] ring-1 ring-rule"
+        className="scroll-quiet absolute right-4 top-14 max-h-[calc(100vh-6.75rem)] w-[340px] overflow-y-auto rounded-2xl bg-card p-4 font-ui text-[13px] text-ink shadow-[var(--shadow)] ring-1 ring-rule"
       >
         <Section title="Theme">
           <div className="grid grid-cols-4 gap-2">
@@ -130,7 +130,7 @@ export function TypePanel() {
                 onClick={() => s.set({ font: f })}
                 className={`flex w-full items-baseline justify-between rounded-lg px-3 py-2 text-left hover:bg-paper-2 ${s.font === f ? "bg-accent-soft" : ""}`}
               >
-                <span style={{ fontFamily: FONTS[f].css }} className="text-[16px]">
+                <span style={{ fontFamily: FONTS[f].css }} className="text-[16px] text-ink">
                   {FONTS[f].label}
                 </span>
                 <span className="text-[11px] text-ink-3">{FONTS[f].note}</span>

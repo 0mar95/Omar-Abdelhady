@@ -2,17 +2,20 @@
 // paragraphs across line, column and page breaks, and recognises headings,
 // lists, reference lists, author callouts ("Key Points") and the index.
 
-import type {
-  Block,
-  BoxBlock,
-  CalloutBlock,
-  FigureBlock,
-  ListBlock,
-  ParagraphBlock,
-  Rect,
-  ReferenceEntry,
-  Span,
-  TableBlock,
+import {
+  spansText,
+  type Block,
+  type BoxBlock,
+  type CalloutBlock,
+  type ContentsBlock,
+  type ContentsEntry,
+  type FigureBlock,
+  type ListBlock,
+  type ParagraphBlock,
+  type Rect,
+  type ReferenceEntry,
+  type Span,
+  type TableBlock,
 } from "../model.ts";
 import type { Column, PageLayout } from "./layout.ts";
 import { lineRect, readingOrder, union } from "./layout.ts";
@@ -71,23 +74,29 @@ export class BlockBuilder {
   private refs: { title: string; items: ReferenceEntry[]; page: number; rect: Rect } | null = null;
   private index: { title: string; lines: string[]; page: number; rect: Rect } | null = null;
   private callout: { title: string; items: Span[][]; page: number; rect: Rect; lastLine?: Line } | null = null;
+  private contents: ContentsBlock | null = null;
   private tables = new Map<string, TableBlock | BoxBlock>();
   private nextId = 0;
+  private perPage = new Map<number, number>();
   private stats: FontStats;
   private book: WordBook;
   private headings: HeadingStyles;
 
-  private idPrefix: string;
+  private idPrefix: string | undefined;
 
-  constructor(stats: FontStats, book: WordBook, headings: HeadingStyles, idPrefix = "b") {
+  /** Without an idPrefix, ids are "p<page>-<n>": stable when other pages change. */
+  constructor(stats: FontStats, book: WordBook, headings: HeadingStyles, idPrefix?: string) {
     this.stats = stats;
     this.book = book;
     this.headings = headings;
     this.idPrefix = idPrefix;
   }
 
-  private id(): string {
-    return `${this.idPrefix}${this.nextId++}`;
+  private id(page: number): string {
+    if (this.idPrefix !== undefined) return `${this.idPrefix}${this.nextId++}`;
+    const n = this.perPage.get(page) ?? 0;
+    this.perPage.set(page, n + 1);
+    return `p${page}-${n}`;
   }
 
   process(item: Item): void {
@@ -117,7 +126,7 @@ export class BlockBuilder {
     if (r.type === "figure") {
       const fig: FigureBlock = {
         kind: "figure",
-        id: this.id(),
+        id: this.id(r.page),
         page: r.page,
         rect: r.crop,
         chapter: 0,
@@ -140,7 +149,7 @@ export class BlockBuilder {
       }
       const t: TableBlock = {
         kind: "table",
-        id: this.id(),
+        id: this.id(r.page),
         page: r.page,
         rect: r.rect,
         chapter: 0,
@@ -157,7 +166,7 @@ export class BlockBuilder {
     }
     // Box: its contents are ordinary paragraphs and lists.
     // Inner blocks get ids under a fresh prefix so continued boxes never collide.
-    const inner = new BlockBuilder(this.stats, this.book, { levelOf: () => null }, `${this.id()}.`);
+    const inner = new BlockBuilder(this.stats, this.book, { levelOf: () => null }, `${this.id(r.page)}.`);
     const xs = r.contentLines.map((l) => l.x0);
     const col: Column = { x0: xs.length ? Math.min(...xs) : r.rect.x0, x1: r.rect.x1 };
     const ordered = readingOrder(
@@ -173,7 +182,7 @@ export class BlockBuilder {
     }
     const box: BoxBlock = {
       kind: "box",
-      id: this.id(),
+      id: this.id(r.page),
       page: r.page,
       rect: r.rect,
       chapter: 0,
@@ -225,12 +234,33 @@ export class BlockBuilder {
       case "callout":
         return this.onCalloutLine(l, col);
       case "contents":
-        this.flushText();
-        this.blocks.push({ kind: "paragraph", id: this.id(), page: l.page, rect: lineRect(l), chapter: 0, spans: [...l.spans] });
-        return;
+        return this.onContentsLine(l, col);
       default:
         return this.onBodyLine(l, col);
     }
+  }
+
+  private onContentsLine(l: Line, col: Column): void {
+    let entry = parseContentsEntry(normalizeText(l.text).trim());
+    // Prose on a contents page ("The glossary is available online…") reads as ordinary text.
+    if (!entry) return this.onBodyLine(l, col);
+    // A long title wraps: its first line arrived as text just above, without a page number.
+    const p = this.para;
+    if (p && !p.small && p.last.page === l.page && l.top - p.last.bottom < l.size * 1.2) {
+      const head = spansText(p.spans).trim();
+      if (head.length < 120 && !SENTENCE_END_RE.test(head)) {
+        this.para = null;
+        entry = parseContentsEntry(`${head} ${normalizeText(l.text).trim()}`) ?? entry;
+      }
+    }
+    this.flushText();
+    if (!this.contents) {
+      // Added to the book right away so prose after the list stays after it.
+      this.contents = { kind: "contents", id: this.id(l.page), page: l.page, rect: lineRect(l), chapter: 0, entries: [] };
+      this.blocks.push(this.contents);
+    }
+    this.contents.entries.push(entry);
+    if (l.page === this.contents.page) this.contents.rect = union(this.contents.rect, lineRect(l));
   }
 
   private onReferenceLine(l: Line): void {
@@ -278,7 +308,7 @@ export class BlockBuilder {
     if (small && p0 && !p0.small && !SENTENCE_END_RE.test(p0.last.text.trim()) && l.top > p0.last.bottom && l.page === p0.last.page) {
       const last = this.footnotes[this.footnotes.length - 1];
       if (last && last.page === l.page && !/^[*†‡§¶]/.test(l.text.trim())) appendSpans(last.spans, l.spans, this.book);
-      else this.footnotes.push({ kind: "paragraph", id: this.id(), page: l.page, rect: lineRect(l), chapter: 0, spans: [...l.spans], small: true });
+      else this.footnotes.push({ kind: "paragraph", id: this.id(l.page), page: l.page, rect: lineRect(l), chapter: 0, spans: [...l.spans], small: true });
       return;
     }
 
@@ -335,6 +365,17 @@ export class BlockBuilder {
     const indented = !cur.besideDropCap && indent > size * 0.6 && indent < width * 0.4;
     const shortBy = prevCol.x1 - prev.x1;
     const ended = SENTENCE_END_RE.test(prev.text.trim());
+    // A line starting in lowercase finishes the sentence above it, even where
+    // the page's column layout is unclear (notes set beside a QR code or image).
+    if (
+      !ended &&
+      /^\p{Ll}/u.test(cur.text.trim()) &&
+      prev.page === cur.page &&
+      cur.top >= prev.top &&
+      cur.top - prev.bottom < size * 1.2 &&
+      Math.abs(cur.x0 - prev.x0) < size * 3
+    )
+      return false;
     const sameFlow = prev.page === cur.page && prevCol.x0 === curCol.x0 && cur.top >= prev.top;
     if (sameFlow) {
       if (cur.top - prev.bottom > size * 0.75) return true;
@@ -359,7 +400,7 @@ export class BlockBuilder {
     this.para = null;
     const spans = trimSpans(p.spans);
     if (spans.length)
-      this.blocks.push({ kind: "paragraph", id: this.id(), page: p.page, rect: p.rect, chapter: 0, spans, small: p.small || undefined });
+      this.blocks.push({ kind: "paragraph", id: this.id(p.page), page: p.page, rect: p.rect, chapter: 0, spans, small: p.small || undefined });
     this.blocks.push(...this.footnotes);
     this.footnotes = [];
     const pending = this.pending;
@@ -371,7 +412,7 @@ export class BlockBuilder {
     const l = this.list;
     if (!l) return;
     this.list = null;
-    this.blocks.push({ kind: "list", id: this.id(), page: l.page, rect: l.rect, chapter: 0, ordered: l.ordered, items: l.items.map(trimSpans) });
+    this.blocks.push({ kind: "list", id: this.id(l.page), page: l.page, rect: l.rect, chapter: 0, ordered: l.ordered, items: l.items.map(trimSpans) });
   }
 
   private flushText(): void {
@@ -393,7 +434,7 @@ export class BlockBuilder {
     const rect = h.lines.map(lineRect).reduce(union);
     if (text.length > 160) {
       // Too long to be a heading (title-page blurbs, contributor lists).
-      this.blocks.push({ kind: "paragraph", id: this.id(), page: first.page, rect, chapter: 0, spans: [{ text, b: true }] });
+      this.blocks.push({ kind: "paragraph", id: this.id(first.page), page: first.page, rect, chapter: 0, spans: [{ text, b: true }] });
       return;
     }
     const mode = MODE_HEADINGS.find(([re]) => re.test(text))?.[1] ?? "normal";
@@ -408,7 +449,7 @@ export class BlockBuilder {
     if (mode === "references" || mode === "index") return;
     this.blocks.push({
       kind: "heading",
-      id: this.id(),
+      id: this.id(first.page),
       page: first.page,
       rect,
       chapter: 0,
@@ -422,17 +463,18 @@ export class BlockBuilder {
   private closeMode(): void {
     if (this.refs) {
       const r = this.refs;
-      this.blocks.push({ kind: "references", id: this.id(), page: r.page, rect: r.rect, chapter: 0, title: r.title, items: r.items });
+      this.blocks.push({ kind: "references", id: this.id(r.page), page: r.page, rect: r.rect, chapter: 0, title: r.title, items: r.items });
       this.refs = null;
     }
     if (this.index) {
       const x = this.index;
-      this.blocks.push({ kind: "index", id: this.id(), page: x.page, rect: x.rect, chapter: 0, title: x.title, lines: x.lines });
+      this.blocks.push({ kind: "index", id: this.id(x.page), page: x.page, rect: x.rect, chapter: 0, title: x.title, lines: x.lines });
       this.index = null;
     }
+    this.contents = null;
     if (this.callout) {
       const c = this.callout;
-      const block: CalloutBlock = { kind: "callout", id: this.id(), page: c.page, rect: c.rect, chapter: 0, title: c.title, items: c.items.map(trimSpans) };
+      const block: CalloutBlock = { kind: "callout", id: this.id(c.page), page: c.page, rect: c.rect, chapter: 0, title: c.title, items: c.items.map(trimSpans) };
       this.blocks.push(block);
       this.callout = null;
     }
@@ -449,11 +491,54 @@ export class BlockBuilder {
   closeAll(): Block[] {
     this.flushAll();
     this.closeMode();
+    pullEntriesBeforeHeading(this.blocks);
     return this.blocks;
   }
 }
 
 // ---------- helpers ----------
+
+const ENTRY_RE = /^(.*?[^\s.·…!_⋯])(?:\s*(?:[.·…!_⋯•]\s*){2,}|\s+)(\d{1,4}|[ivxlcdm]{1,7})$/;
+
+/**
+ * One line of a book's contents page: "2 General Assessment 36", "Preface vi",
+ * with dot leaders or spacer glyphs ("Pain!!1") between title and page.
+ */
+export function parseContentsEntry(text: string): ContentsEntry | null {
+  const m = ENTRY_RE.exec(text);
+  if (!m) return null;
+  let title = m[1].trim();
+  // Titles start with a capital or a chapter number; prose lines don't.
+  if (!/^[\p{Lu}\d]/u.test(title)) return null;
+  const num = /^(\d{1,3})\.?\s+(?=\S)/.exec(title);
+  if (num) title = title.slice(num[0].length);
+  if (!/\p{L}/u.test(title)) return null;
+  return { num: num?.[1], title, page: m[2] };
+}
+
+/**
+ * Entries printed beside the "Contents" title can be read before it ("Preface vi"
+ * set level with a big right-aligned title); move them into the list.
+ */
+function pullEntriesBeforeHeading(blocks: Block[]): void {
+  for (let i = 2; i < blocks.length; i++) {
+    const c = blocks[i];
+    if (c.kind !== "contents" || blocks[i - 1].kind !== "heading") continue;
+    const moved: ContentsEntry[] = [];
+    let j = i - 2;
+    for (; j >= 0; j--) {
+      const b = blocks[j];
+      if (b.kind !== "paragraph" || b.page !== c.page) break;
+      const e = parseContentsEntry(spansText(b.spans).trim());
+      if (!e) break;
+      moved.unshift(e);
+    }
+    if (!moved.length) continue;
+    c.entries.unshift(...moved);
+    blocks.splice(j + 1, moved.length);
+    i -= moved.length;
+  }
+}
 
 function localLayout(lines: Line[], rect: Rect): PageLayout {
   const mid = (rect.x0 + rect.x1) / 2;

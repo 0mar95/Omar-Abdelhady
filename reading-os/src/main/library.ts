@@ -11,7 +11,8 @@ import { buildChunks, embedPrefix, embedText, ftsQuery, fuse, noteSections, type
 /** Bump when chunking changes so books are re-indexed. */
 const CHUNKER_VERSION = 1;
 const INDEX_VERSION = EXTRACTOR_VERSION * 100 + CHUNKER_VERSION;
-const EMBED_BATCH = 24;
+// Small batches keep each burst of GPU work short, so reading stays smooth.
+const EMBED_BATCH = 8;
 /** Notes are prepared this many sections behind and ahead of the reader. */
 const NOTES_BEHIND = 1;
 const NOTES_AHEAD = 6;
@@ -92,9 +93,15 @@ export class LibraryIndex {
       CREATE TABLE IF NOT EXISTS glossary (book_id TEXT, key TEXT, term TEXT, definition TEXT, model TEXT, created_at INTEGER,
         PRIMARY KEY (book_id, key));
     `);
+    // Notes remember their heading's text, so they survive a re-extraction that keeps the heading.
+    const cols = this.db.prepare("PRAGMA table_info(notes)").all() as { name: string }[];
+    if (!cols.some((c) => c.name === "heading")) this.db.exec("ALTER TABLE notes ADD COLUMN heading TEXT");
   }
 
+  private closed = false;
+
   close(): void {
+    this.closed = true;
     clearTimeout(this.retryTimer);
     this.db.close();
   }
@@ -131,20 +138,40 @@ export class LibraryIndex {
 
   private rebuild(bookId: string, title: string, doc: BookDoc): void {
     const chunks = buildChunks(doc);
+    // Passages whose text is unchanged keep their vectors: no need to embed them again.
+    const oldVecs = new Map<string, { model: string; vec: Uint8Array }[]>();
+    const rows = this.db
+      .prepare("SELECT c.section, c.text, v.model, v.vec FROM chunks c JOIN vectors v ON v.chunk_id = c.id WHERE c.book_id = ?")
+      .all(bookId) as { section: string; text: string; model: string; vec: Uint8Array }[];
+    for (const r of rows) {
+      const k = `${r.section}\u0000${r.text}`;
+      oldVecs.set(k, [...(oldVecs.get(k) ?? []), { model: r.model, vec: r.vec }]);
+    }
+    // Margin notes stay with headings that kept their id and text.
+    const headings = new Map<string, string>();
+    for (const b of doc.blocks) if (b.kind === "heading") headings.set(b.id, b.text);
+    const notes = this.db.prepare("SELECT block_id, heading FROM notes WHERE book_id = ?").all(bookId) as { block_id: string; heading: string | null }[];
+    const staleNotes = notes.filter((n) => n.heading === null || headings.get(n.block_id) !== n.heading);
     this.db.exec("BEGIN");
     try {
       this.db.prepare("DELETE FROM chunks_fts WHERE rowid IN (SELECT id FROM chunks WHERE book_id = ?)").run(bookId);
       this.db.prepare("DELETE FROM vectors WHERE chunk_id IN (SELECT id FROM chunks WHERE book_id = ?)").run(bookId);
       this.db.prepare("DELETE FROM chunks WHERE book_id = ?").run(bookId);
-      // Block ids can change with a new extraction, so old notes go too.
-      this.db.prepare("DELETE FROM notes WHERE book_id = ?").run(bookId);
+      const delNote = this.db.prepare("DELETE FROM notes WHERE book_id = ? AND block_id = ?");
+      for (const n of staleNotes) delNote.run(bookId, n.block_id);
       const ins = this.db.prepare(
         "INSERT INTO chunks (book_id, seq, block_id, block_index, block_end, chapter, section, page, kind, text) VALUES (?,?,?,?,?,?,?,?,?,?)",
       );
       const fts = this.db.prepare("INSERT INTO chunks_fts (rowid, text, section) VALUES (?, ?, ?)");
+      const vec = this.db.prepare("INSERT OR REPLACE INTO vectors (chunk_id, model, vec) VALUES (?, ?, ?)");
       for (const c of chunks) {
         const r = ins.run(bookId, c.seq, c.blockId, c.blockIndex, c.blockEnd, c.chapter, c.section, c.page, c.kind, c.text);
-        fts.run(Number(r.lastInsertRowid), c.text, c.section);
+        const id = Number(r.lastInsertRowid);
+        fts.run(id, c.text, c.section);
+        // One vector per chunk row: keep the one for the current search model if there is a choice.
+        const kept = oldVecs.get(`${c.section}\u0000${c.text}`);
+        const v = kept?.find((x) => x.model === this.cfg.embedModel) ?? kept?.[0];
+        if (v) vec.run(id, v.model, v.vec);
       }
       this.db
         .prepare("INSERT INTO books (id, title, version, chunks, updated_at) VALUES (?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, version=excluded.version, chunks=excluded.chunks, updated_at=excluded.updated_at")
@@ -193,6 +220,7 @@ export class LibraryIndex {
     this.working = true;
     try {
       for (;;) {
+        if (this.closed) break;
         if (this.deps.userBusy()) {
           await sleep(300);
           continue;
@@ -320,8 +348,8 @@ export class LibraryIndex {
       };
       if (!note.summary) throw new Error("empty note");
       this.db
-        .prepare("INSERT OR REPLACE INTO notes (book_id, block_id, model, summary, concepts, created_at) VALUES (?,?,?,?,?,?)")
-        .run(bookId, note.blockId, note.model, note.summary, JSON.stringify(note.concepts), note.createdAt);
+        .prepare("INSERT OR REPLACE INTO notes (book_id, block_id, model, summary, concepts, created_at, heading) VALUES (?,?,?,?,?,?,?)")
+        .run(bookId, note.blockId, note.model, note.summary, JSON.stringify(note.concepts), note.createdAt, headingText(book.doc, section.blockIndex));
       this.deps.emitNote({ type: "note", note });
     } catch (e) {
       if (this.deps.isModelMissing(e)) this.notesState = "no-model";
@@ -602,6 +630,11 @@ function cleanConcepts(cs: string[]): string[] {
     if (t && t.length <= 48 && !out.some((o) => o.toLowerCase() === t.toLowerCase())) out.push(t);
   }
   return out.slice(0, 4);
+}
+
+function headingText(doc: BookDoc, index: number): string | null {
+  const b = doc.blocks[index];
+  return b?.kind === "heading" ? b.text : null;
 }
 
 // ---------- prompts ----------

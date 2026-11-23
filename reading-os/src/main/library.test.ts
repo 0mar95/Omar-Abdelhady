@@ -145,6 +145,36 @@ describe("LibraryIndex", () => {
     expect(n.concepts).toEqual(["Concept A", "Concept B"]);
   });
 
+  it("re-indexing a new extraction keeps vectors and notes where the text is unchanged", async () => {
+    let book = makeBook();
+    const embedded: string[] = [];
+    const { lib, notes } = open({
+      loadBook: async () => book,
+      embed: async (_cfg, texts) => {
+        embedded.push(...texts);
+        return fakeEmbed(texts);
+      },
+    });
+    await lib.indexBook("book1", "Test Book");
+    await lib.whenIdle();
+    const firstRun = embedded.length;
+    expect(lib.notes("book1").length).toBe(3);
+    // The next extractor version changes one section's heading and text.
+    book = makeBook();
+    book.blocks[3] = head("h3", 2, "Burning mouth syndrome (BMS)", 0);
+    book.blocks[4] = para("p2", 0, 2, `Burning mouth syndrome is a burning sensation. ${filler("Changed wording")}`);
+    (lib as unknown as { db: { exec(sql: string): void } }).db.exec("UPDATE books SET version = 0");
+    embedded.length = 0;
+    notes.length = 0;
+    await lib.indexBook("book1", "Test Book");
+    await lib.whenIdle();
+    expect(embedded.length).toBeGreaterThan(0);
+    expect(embedded.length).toBeLessThan(firstRun);
+    expect(notes).toEqual(["h3"]); // only the changed section gets a new note
+    expect(lib.status("book1").state).toBe("ready");
+    expect(lib.notes("book1").length).toBe(3);
+  });
+
   it("keeps exact search working when the embedding model is missing", async () => {
     const { lib } = open({
       embed: async () => {

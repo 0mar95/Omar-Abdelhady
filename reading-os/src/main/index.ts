@@ -48,6 +48,8 @@ function safeKey(key: string): string {
   return key.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
 }
 
+const PAPER: Record<string, string> = { light: "#fbfaf7", sepia: "#f6efe2", dark: "#1c1b19", black: "#000000" };
+
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1280,
@@ -55,7 +57,8 @@ function createWindow(): BrowserWindow {
     minWidth: 720,
     minHeight: 520,
     show: false,
-    backgroundColor: "#f7f3ea",
+    // The saved theme's paper color, so the window never flashes another theme.
+    backgroundColor: PAPER[(state.settings as { theme?: string } | undefined)?.theme ?? "sepia"] ?? PAPER.sepia,
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     trafficLightPosition: { x: 14, y: 14 },
     webPreferences: {
@@ -111,6 +114,8 @@ function buildMenu(): void {
 }
 
 let library: LibraryIndex | null = null;
+/** When the reader last scrolled (see userBusy below). */
+let lastScroll = 0;
 
 function broadcast(channel: string, payload: unknown): void {
   for (const w of BrowserWindow.getAllWindows()) if (!w.webContents.isDestroyed()) w.webContents.send(channel, payload);
@@ -130,7 +135,9 @@ function openLibrary(): LibraryIndex {
     writeNote: (cfg, book, section) => ollama.chatJson<NoteDraft>(cfg.baseUrl, cfg.chatModel, noteMessages(book, section), NOTE_SCHEMA),
     writeDefinition: (cfg, title, req) => ollama.chatJson<{ definition: string }>(cfg.baseUrl, cfg.chatModel, definitionMessages(title, req), DEFINITION_SCHEMA),
     emitGlossary: (e) => broadcast("glossary:event", e),
-    userBusy: ollama.userBusy,
+    // Background work also waits while the reader scrolls: on Apple silicon the
+    // models share the GPU with the window, and scrolling would stutter.
+    userBusy: () => ollama.userBusy() || Date.now() - lastScroll < 1500,
     emitStatus: (s) => broadcast("index:status", s),
     emitNote: (e) => broadcast("notes:event", e),
     isModelMissing: (e) => e instanceof ollama.ModelMissingError,
@@ -190,6 +197,9 @@ function registerIpc(): void {
   ipcMain.handle("glossary:define", (_e, bookId: string, req: DefineRequest) => library!.requestDefinition(bookId, req));
   ipcMain.handle("glossary:mentions", (_e, phrases: string[], exclude: string) => library!.mentions(phrases, exclude));
   ipcMain.handle("reader:position", (_e, bookId: string, blockIndex: number) => library?.setPosition(bookId, blockIndex));
+  ipcMain.on("reader:activity", () => {
+    lastScroll = Date.now();
+  });
 }
 
 void app.whenReady().then(async () => {

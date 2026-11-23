@@ -38,7 +38,7 @@ export function indexBook(book: BookDoc): BookIndex {
     const t = blockText(b);
     texts.push(t);
     // References and the index are skimmed, not read: don't count them.
-    if (b.kind !== "references" && b.kind !== "index") words += countWords(t);
+    if (b.kind !== "references" && b.kind !== "index" && b.kind !== "contents") words += countWords(t);
     if ((b.kind === "figure" || b.kind === "table" || b.kind === "box") && b.key && !byKey.has(b.key)) byKey.set(b.key, b.id);
   });
   const pageFirstBlock: number[] = new Array(book.pageCount).fill(-1);

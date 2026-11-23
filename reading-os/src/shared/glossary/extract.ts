@@ -345,7 +345,7 @@ export function extractGlossary(book: BookDoc): GlossaryTerm[] {
   const byKey = new Map(list.map((t) => [t.key, t]));
   const matcher = buildMatcher(list);
   book.blocks.forEach((b, i) => {
-    if (b.kind === "index" || b.kind === "references" || b.kind === "heading") return;
+    if (b.kind === "index" || b.kind === "references" || b.kind === "heading" || b.kind === "contents") return;
     const seen = new Set<string>();
     for (const spans of blockSpans(b)) for (const m of matcher(plainText(spans))) seen.add(m.key);
     for (const k of seen) byKey.get(k)?.occurrences.push(i);

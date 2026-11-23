@@ -117,6 +117,8 @@ export interface LibraryApi {
   notesList(bookId: string): Promise<MarginNote[]>;
   onNoteEvent(cb: (e: NoteEvent) => void): () => void;
   readingPosition(bookId: string, blockIndex: number): Promise<void>;
+  /** The reader is scrolling: background AI work waits so scrolling stays smooth. */
+  readerActivity(): void;
 }
 
 // ---------- Phase 3: glossary ----------

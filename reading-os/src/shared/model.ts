@@ -3,7 +3,7 @@
 // the page and rectangle it came from so the original page can always be shown.
 
 /** Bump whenever extraction output changes so cached books are re-extracted. */
-export const EXTRACTOR_VERSION = 5;
+export const EXTRACTOR_VERSION = 6;
 
 /** Rectangle in PDF points, origin at the top-left of the page. */
 export interface Rect {
@@ -118,6 +118,20 @@ export interface IndexBlock extends BlockBase {
   lines: string[];
 }
 
+/** The book's own table of contents page: entries with their printed page numbers. */
+export interface ContentsBlock extends BlockBase {
+  kind: "contents";
+  entries: ContentsEntry[];
+}
+
+export interface ContentsEntry {
+  /** Chapter number printed before the title, if any. */
+  num?: string;
+  title: string;
+  /** The page label printed in the contents ("vi", "36"). */
+  page: string;
+}
+
 export type Block =
   | HeadingBlock
   | ParagraphBlock
@@ -127,7 +141,8 @@ export type Block =
   | BoxBlock
   | CalloutBlock
   | ReferencesBlock
-  | IndexBlock;
+  | IndexBlock
+  | ContentsBlock;
 
 export interface PageInfo {
   w: number;
@@ -203,5 +218,7 @@ export function blockText(b: Block): string {
       return b.items.map((r) => `${r.n}. ${r.text}`).join("\n");
     case "index":
       return b.lines.join("\n");
+    case "contents":
+      return b.entries.map((e) => [e.num, e.title, e.page].filter(Boolean).join(" ")).join("\n");
   }
 }

@@ -33,6 +33,7 @@ const api: ReadingOSApi = {
     return () => ipcRenderer.removeListener("notes:event", listener);
   },
   readingPosition: (bookId, blockIndex) => ipcRenderer.invoke("reader:position", bookId, blockIndex),
+  readerActivity: () => ipcRenderer.send("reader:activity"),
   glossaryDefinitions: (bookId) => ipcRenderer.invoke("glossary:definitions", bookId),
   glossaryDefine: (bookId, req) => ipcRenderer.invoke("glossary:define", bookId, req),
   onGlossaryEvent: (cb) => {

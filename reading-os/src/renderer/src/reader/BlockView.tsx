@@ -2,13 +2,13 @@
 // links) are plain elements with data attributes; Reader handles hover and
 // clicks for all of them with a few delegated listeners.
 
-import { memo, useEffect, useRef, useState, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { create } from "zustand";
-import type { Block, BoxBlock, FigureBlock, Span, TableBlock } from "../../../shared/model";
+import type { Block, BookDoc, BoxBlock, ContentsBlock, ContentsEntry, FigureBlock, Span, TableBlock } from "../../../shared/model";
 import type { TermMatch } from "../../../shared/glossary/extract";
 import { renderRegion } from "../pdf";
 import { useGlossary } from "../state/glossary";
-import { useReader } from "../state/reader";
+import { useReader, type BookIndex } from "../state/reader";
 import { useSettings } from "../state/settings";
 import { IconBulb, IconImage } from "../ui/icons";
 
@@ -282,6 +282,47 @@ function Box({ b }: { b: BoxBlock }) {
 
 const EMPTY = new Set<string>();
 
+const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+
+/** Where a contents entry points: its printed page (and the heading there), else a heading of that title. */
+function contentsTarget(book: BookDoc, ix: BookIndex, from: number, e: ContentsEntry): string | null {
+  const title = norm(e.title);
+  const page = book.pages.findIndex((p, i) => i > book.blocks[from].page && p.label === e.page);
+  if (page >= 0) {
+    const start = ix.pageFirstBlock[page];
+    for (let i = start; i < book.blocks.length && book.blocks[i].page <= page + 1; i++) {
+      const b = book.blocks[i];
+      if (b.kind === "heading" && norm(b.text) === title) return b.id;
+    }
+    return book.blocks[start]?.id ?? null;
+  }
+  const t = book.toc.find((x) => norm(x.title) === title && (ix.byId.get(x.blockId) ?? 0) > from);
+  return t?.blockId ?? null;
+}
+
+function Contents({ b }: { b: ContentsBlock }) {
+  const book = useReader((s) => s.book)!;
+  const ix = useReader((s) => s.ix)!;
+  const targets = useMemo(() => {
+    const from = ix.byId.get(b.id) ?? 0;
+    return b.entries.map((e) => contentsTarget(book, ix, from, e));
+  }, [b, book, ix]);
+  return (
+    <ol className="contents font-ui text-[0.88em]">
+      {b.entries.map((e, i) => (
+        <li key={i}>
+          <button type="button" disabled={!targets[i]} onClick={() => targets[i] && useReader.getState().jumpTo({ blockId: targets[i]! })}>
+            <span className="num">{e.num}</span>
+            <span className={e.num ? "font-medium" : "text-ink-2"}>{e.title}</span>
+            <span className="leader" aria-hidden />
+            <span className="pg">{e.page}</span>
+          </button>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 function BlockInner({ b }: { b: Block }) {
   // Glossary terms are marked at their first mention in each section.
   const allow = useGlossary((g) => g.allowed.get(b.id));
@@ -367,10 +408,13 @@ function BlockInner({ b }: { b: Block }) {
           </div>
         </details>
       );
+    case "contents":
+      return <Contents b={b} />;
   }
 }
 
-export const BlockView = memo(function BlockView({ b, pageLabel }: { b: Block; pageLabel?: string }) {
+/** flow: "jp" when a paragraph follows a paragraph, "jn" when one comes next (book-style indents). */
+export const BlockView = memo(function BlockView({ b, pageLabel, flow }: { b: Block; pageLabel?: string; flow?: string }) {
   return (
     <>
       {pageLabel && (
@@ -381,7 +425,7 @@ export const BlockView = memo(function BlockView({ b, pageLabel }: { b: Block; p
           </span>
         </div>
       )}
-      <div data-block={b.id} data-page={b.page} className={`blk blk-${b.kind} relative`}>
+      <div data-block={b.id} data-page={b.page} className={`blk blk-${b.kind} relative${flow ? ` ${flow}` : ""}`}>
         <BlockInner b={b} />
       </div>
     </>

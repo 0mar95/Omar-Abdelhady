@@ -31,5 +31,12 @@ describe.skipIf(!file)("extractFromDocument (real book)", () => {
     const paras = book.blocks.filter((b) => b.kind === "paragraph" && b.chapter > 0);
     const broken = paras.filter((b) => /^[a-z]/.test(blockText(b).trim()));
     expect(broken.length / Math.max(1, paras.length)).toBeLessThan(0.03);
+    // A printed contents page becomes one list, without leader glyphs.
+    const contents = book.blocks.filter((b) => b.kind === "contents");
+    if (contents.length) {
+      for (const c of contents) for (const e of c.kind === "contents" ? c.entries : []) expect(e.title).not.toMatch(/[.!·…_]{2,}$/);
+    }
+    // Block ids are unique.
+    expect(new Set(book.blocks.map((b) => b.id)).size).toBe(book.blocks.length);
   }, 300_000);
 });
