@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
-import type { ChatChunk, ChatRequest, ReadingOSApi } from "../shared/ipc";
+import type { ChatChunk, ChatRequest, IndexStatus, NoteEvent, ReadingOSApi } from "../shared/ipc";
 
 const api: ReadingOSApi = {
   platform: process.platform,
@@ -18,6 +18,21 @@ const api: ReadingOSApi = {
     ipcRenderer.on("ai:chunk", listener);
     return () => ipcRenderer.removeListener("ai:chunk", listener);
   },
+  aiConfigure: (cfg) => ipcRenderer.invoke("ai:configure", cfg),
+  indexBook: (bookId, title, blockIndex) => ipcRenderer.invoke("index:book", bookId, title, blockIndex),
+  onIndexStatus: (cb) => {
+    const listener = (_: unknown, s: IndexStatus) => cb(s);
+    ipcRenderer.on("index:status", listener);
+    return () => ipcRenderer.removeListener("index:status", listener);
+  },
+  search: (p) => ipcRenderer.invoke("search:query", p),
+  notesList: (bookId) => ipcRenderer.invoke("notes:list", bookId),
+  onNoteEvent: (cb) => {
+    const listener = (_: unknown, e: NoteEvent) => cb(e);
+    ipcRenderer.on("notes:event", listener);
+    return () => ipcRenderer.removeListener("notes:event", listener);
+  },
+  readingPosition: (bookId, blockIndex) => ipcRenderer.invoke("reader:position", bookId, blockIndex),
   onMenu: (cb) => {
     const listener = (_: unknown, action: string) => cb(action);
     ipcRenderer.on("menu", listener);

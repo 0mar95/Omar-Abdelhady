@@ -22,7 +22,11 @@ export interface Settings {
   indent: boolean;
   pageNumbers: boolean;
   model: string;
+  embedModel: string;
   ollamaUrl: string;
+  marginNotes: boolean;
+  /** Search and questions only use the book up to the reading position. */
+  spoilerLimit: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -35,7 +39,10 @@ export const DEFAULT_SETTINGS: Settings = {
   indent: false,
   pageNumbers: true,
   model: "qwen3.5:4b",
+  embedModel: "qwen3-embedding:0.6b",
   ollamaUrl: "http://127.0.0.1:11434",
+  marginNotes: true,
+  spoilerLimit: false,
 };
 
 interface SettingsStore extends Settings {

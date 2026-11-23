@@ -142,6 +142,8 @@ interface CardStore {
   cards: Card[];
   load(bookId: string): Promise<void>;
   run(kind: ActionKind, blockId: string, quote: string, ctx: ReadingContext, question?: string, replace?: string): string;
+  /** Keeps a finished answer (e.g. from ⌘K) as a card under a block. */
+  pin(blockId: string, question: string, text: string): void;
   remove(id: string): void;
   toggle(id: string): void;
   stop(id: string): void;
@@ -189,6 +191,12 @@ export const useCards = create<CardStore>((set, get) => ({
       .catch((e: unknown) => update({ status: "error", error: e instanceof Error ? e.message : String(e) }))
       .finally(() => handles.delete(id));
     return id;
+  },
+  pin(blockId, question, text) {
+    const card: Card = { id: crypto.randomUUID(), blockId, kind: "ask", quote: question, question, text, status: "done", collapsed: false, createdAt: Date.now() };
+    const cards = [...get().cards, card];
+    set({ cards });
+    persist(get().bookId, cards);
   },
   remove(id) {
     handles.get(id)?.abort();

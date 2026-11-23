@@ -5,7 +5,12 @@ import type { AiStatus, ChatChunk, ChatRequest } from "../shared/ipc";
 
 const running = new Map<string, AbortController>();
 
-function normalizeBase(baseUrl: string): string {
+/** True while the reader is waiting on an answer: background work yields. */
+export function userBusy(): boolean {
+  return running.size > 0;
+}
+
+export function normalizeBase(baseUrl: string): string {
   const url = new URL(baseUrl || "http://127.0.0.1:11434");
   // Only local servers: this app never sends book text off the machine.
   if (!["127.0.0.1", "localhost", "::1", "[::1]"].includes(url.hostname)) throw new Error("Only a local Ollama server is allowed");
@@ -80,4 +85,52 @@ export function abort(id: string): void {
 function friendlyError(status: number, body: string, model: string): string {
   if (status === 404 || /not found/i.test(body)) return `The model "${model}" isn't installed. Run: ollama pull ${model}`;
   return `Ollama error ${status}${body ? `: ${body.slice(0, 200)}` : ""}`;
+}
+
+export class ModelMissingError extends Error {}
+export class OfflineError extends Error {}
+
+async function post(baseUrl: string, path: string, body: unknown, timeoutMs: number): Promise<Response> {
+  try {
+    return await fetch(`${normalizeBase(baseUrl)}${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (e) {
+    throw new OfflineError(e instanceof Error ? e.message : String(e));
+  }
+}
+
+/** Embeds a batch of texts; returns unit-length vectors. */
+export async function embed(baseUrl: string, model: string, input: string[]): Promise<Float32Array[]> {
+  const res = await post(baseUrl, "/api/embed", { model, input, truncate: true, keep_alive: "30m" }, 120_000);
+  if (res.status === 404) throw new ModelMissingError(model);
+  if (!res.ok) throw new Error(`Ollama embed error ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const body = (await res.json()) as { embeddings?: number[][] };
+  return (body.embeddings ?? []).map((v) => {
+    const f = Float32Array.from(v);
+    let n = 0;
+    for (const x of f) n += x * x;
+    n = Math.sqrt(n) || 1;
+    for (let i = 0; i < f.length; i++) f[i] /= n;
+    return f;
+  });
+}
+
+/** One non-streaming chat turn that must answer in JSON matching a schema. */
+export async function chatJson<T>(baseUrl: string, model: string, messages: ChatRequest["messages"], schema: object): Promise<T> {
+  const res = await post(
+    baseUrl,
+    "/api/chat",
+    { model, messages, stream: false, think: false, format: schema, keep_alive: "30m", options: { temperature: 0.2, num_ctx: 8192 } },
+    180_000,
+  );
+  if (res.status === 404) throw new ModelMissingError(model);
+  if (!res.ok) throw new Error(`Ollama error ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const body = (await res.json()) as { message?: { content?: string } };
+  const content = body.message?.content ?? "";
+  const json = content.slice(content.indexOf("{"), content.lastIndexOf("}") + 1);
+  return JSON.parse(json) as T;
 }

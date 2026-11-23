@@ -118,9 +118,12 @@ body {
 button {
   cursor: default;
 }
-:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+@layer base {
+  /* In the base layer so utilities such as focus-visible:outline-none can override it. */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
 }
 
 /* ---------- Reading surface ---------- */
@@ -221,9 +224,31 @@ button {
 .ai-md ul > li::marker {
   color: var(--accent);
 }
-.page-anchor {
+.page-anchor,
+.note-anchor {
   position: relative;
   height: 0;
+}
+/* Margin notes hang in the right margin, level with their section heading. */
+.margin-note {
+  position: absolute;
+  left: calc(100% + 2.75rem);
+  /* Level with the heading: its top margin, in reading-size units. */
+  top: calc(var(--reader-size) * 2.95);
+  width: 15.5rem;
+  padding-left: 0.85rem;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  font-size: 13px;
+  animation: note-in 0.5s ease-out;
+}
+.margin-note.lvl-3 {
+  top: calc(var(--reader-size) * 1.95);
+}
+@keyframes note-in {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
 }
 .book li {
   margin: 0.25em 0;

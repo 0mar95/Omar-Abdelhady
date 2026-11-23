@@ -64,6 +64,8 @@ export function PageView({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElem
     const el = scrollRef.current?.querySelector<HTMLElement>(`[data-pdf-page="${page}"]`);
     el?.scrollIntoView({ block: "start" });
     lastPage.current = page;
+    const target = jump.blockId ?? book.blocks[ix.pageFirstBlock[page]]?.id;
+    if (target) useReader.getState().setPosition(target);
   }, [jump, book, ix, scrollRef]);
 
   const regenerate = (card: Card) =>

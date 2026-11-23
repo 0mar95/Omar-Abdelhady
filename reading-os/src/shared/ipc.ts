@@ -35,7 +35,7 @@ export interface AiStatus {
   error?: string;
 }
 
-export interface ReadingOSApi {
+export interface ReadingOSApi extends LibraryApi {
   platform: string;
   openPdfDialog(): Promise<OpenedFile | null>;
   readFile(path: string): Promise<Uint8Array | null>;
@@ -50,4 +50,71 @@ export interface ReadingOSApi {
   aiAbort(id: string): Promise<void>;
   onAiChunk(cb: (chunk: ChatChunk) => void): () => void;
   onMenu(cb: (action: string) => void): () => void;
+}
+
+// ---------- Phase 2: library index, search, margin notes ----------
+
+export interface AiConfig {
+  baseUrl: string;
+  chatModel: string;
+  embedModel: string;
+  /** Generate margin notes in the background while reading. */
+  notes: boolean;
+}
+
+export interface IndexStatus {
+  bookId: string;
+  state: "indexing" | "embedding" | "ready" | "no-embed-model" | "offline" | "unknown";
+  chunks: number;
+  embedded: number;
+  embedModel: string;
+  notes: number;
+  message?: string;
+}
+
+export interface SearchParams {
+  q: string;
+  /** Limit to one book; all books when absent. */
+  bookId?: string;
+  /** Reading-position limit: only blocks up to this index (one book only). */
+  maxBlock?: number;
+  limit?: number;
+}
+
+export interface SearchHit {
+  bookId: string;
+  bookTitle: string;
+  chunkId: number;
+  blockId: string;
+  blockIndex: number;
+  chapter: number;
+  section: string;
+  page: number;
+  kind: string;
+  /** Short excerpt; matched words wrapped in \u0001…\u0002. */
+  snippet: string;
+  text: string;
+  match: "exact" | "meaning" | "both";
+  score: number;
+}
+
+export interface MarginNote {
+  bookId: string;
+  blockId: string;
+  summary: string;
+  concepts: string[];
+  model: string;
+  createdAt: number;
+}
+
+export type NoteEvent = { type: "note"; note: MarginNote } | { type: "working"; bookId: string; blockId: string | null };
+
+export interface LibraryApi {
+  aiConfigure(cfg: AiConfig): Promise<void>;
+  indexBook(bookId: string, title: string, blockIndex: number): Promise<IndexStatus>;
+  onIndexStatus(cb: (s: IndexStatus) => void): () => void;
+  search(p: SearchParams): Promise<SearchHit[]>;
+  notesList(bookId: string): Promise<MarginNote[]>;
+  onNoteEvent(cb: (e: NoteEvent) => void): () => void;
+  readingPosition(bookId: string, blockIndex: number): Promise<void>;
 }

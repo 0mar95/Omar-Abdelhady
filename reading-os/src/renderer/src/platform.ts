@@ -1,7 +1,19 @@
 // Everything that differs between the desktop app (Electron) and the browser
 // build used for development and automated tests.
 
-import type { AiStatus, ChatChunk, ChatRequest, OpenedFile, ReadingOSApi } from "../../shared/ipc";
+import type {
+  AiConfig,
+  AiStatus,
+  ChatChunk,
+  ChatRequest,
+  IndexStatus,
+  MarginNote,
+  NoteEvent,
+  OpenedFile,
+  ReadingOSApi,
+  SearchHit,
+  SearchParams,
+} from "../../shared/ipc";
 
 declare global {
   interface Window {
@@ -28,6 +40,15 @@ export interface Platform {
   aiStatus(baseUrl: string): Promise<AiStatus>;
   chat(req: ChatRequest, onText: (t: string) => void): ChatHandle;
   onMenu(cb: (action: string) => void): () => void;
+  /** Whether search runs on the local index (desktop) or the simple in-page fallback (browser). */
+  hasIndex: boolean;
+  aiConfigure(cfg: AiConfig): Promise<void>;
+  indexBook(bookId: string, title: string, blockIndex: number): Promise<IndexStatus | null>;
+  onIndexStatus(cb: (s: IndexStatus) => void): () => void;
+  search(p: SearchParams): Promise<SearchHit[] | null>;
+  notesList(bookId: string): Promise<MarginNote[]>;
+  onNoteEvent(cb: (e: NoteEvent) => void): () => void;
+  readingPosition(bookId: string, blockIndex: number): void;
 }
 
 // ---------- Electron ----------
@@ -68,6 +89,14 @@ function electronPlatform(api: ReadingOSApi): Platform {
       return { done, abort: () => void api.aiAbort(id) };
     },
     onMenu: (cb) => api.onMenu(cb),
+    hasIndex: true,
+    aiConfigure: (cfg) => api.aiConfigure(cfg),
+    indexBook: (id, title, blockIndex) => api.indexBook(id, title, blockIndex),
+    onIndexStatus: (cb) => api.onIndexStatus(cb),
+    search: (p) => api.search(p),
+    notesList: (id) => api.notesList(id),
+    onNoteEvent: (cb) => api.onNoteEvent(cb),
+    readingPosition: (id, blockIndex) => void api.readingPosition(id, blockIndex),
   };
 }
 
@@ -187,6 +216,16 @@ function webPlatform(): Platform {
       return { done, abort: () => ctrl.abort() };
     },
     onMenu: () => () => {},
+    // The browser build has no local index: search falls back to scanning the
+    // open book, and margin notes are a desktop feature.
+    hasIndex: false,
+    aiConfigure: async () => {},
+    indexBook: async () => null,
+    onIndexStatus: () => () => {},
+    search: async () => null,
+    notesList: async () => [],
+    onNoteEvent: () => () => {},
+    readingPosition: () => {},
   };
 }
 

@@ -2,7 +2,9 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, net, protocol, session, shel
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import type { ChatRequest } from "../shared/ipc";
+import type { AiConfig, ChatRequest, SearchParams } from "../shared/ipc";
+import { EXTRACTOR_VERSION, type BookDoc } from "../shared/model";
+import { LibraryIndex, NOTE_SCHEMA, noteMessages, type NoteDraft } from "./library";
 import * as ollama from "./ollama";
 
 // One name everywhere, so settings and the book cache live in the same
@@ -108,6 +110,32 @@ function buildMenu(): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+let library: LibraryIndex | null = null;
+
+function broadcast(channel: string, payload: unknown): void {
+  for (const w of BrowserWindow.getAllWindows()) if (!w.webContents.isDestroyed()) w.webContents.send(channel, payload);
+}
+
+function openLibrary(): LibraryIndex {
+  return new LibraryIndex(path.join(dataDir(), "library.sqlite"), {
+    async loadBook(bookId) {
+      try {
+        const file = path.join(cacheDir(), `${safeKey(`book-${bookId}-v${EXTRACTOR_VERSION}`)}.json`);
+        return JSON.parse(await fs.readFile(file, "utf8")) as BookDoc;
+      } catch {
+        return null;
+      }
+    },
+    embed: (cfg, texts) => ollama.embed(cfg.baseUrl, cfg.embedModel, texts),
+    writeNote: (cfg, book, section) => ollama.chatJson<NoteDraft>(cfg.baseUrl, cfg.chatModel, noteMessages(book, section), NOTE_SCHEMA),
+    userBusy: ollama.userBusy,
+    emitStatus: (s) => broadcast("index:status", s),
+    emitNote: (e) => broadcast("notes:event", e),
+    isModelMissing: (e) => e instanceof ollama.ModelMissingError,
+    isOffline: (e) => e instanceof ollama.OfflineError,
+  });
+}
+
 function registerIpc(): void {
   ipcMain.handle("file:open-dialog", async (e) => {
     const win = BrowserWindow.fromWebContents(e.sender);
@@ -152,6 +180,11 @@ function registerIpc(): void {
     });
   });
   ipcMain.handle("ai:abort", (_e, id: string) => ollama.abort(id));
+  ipcMain.handle("ai:configure", (_e, cfg: AiConfig) => library?.configure(cfg));
+  ipcMain.handle("index:book", (_e, bookId: string, title: string, blockIndex: number) => library!.indexBook(bookId, title, blockIndex));
+  ipcMain.handle("search:query", (_e, p: SearchParams) => library!.search(p));
+  ipcMain.handle("notes:list", (_e, bookId: string) => library!.notes(bookId));
+  ipcMain.handle("reader:position", (_e, bookId: string, blockIndex: number) => library?.setPosition(bookId, blockIndex));
 }
 
 void app.whenReady().then(async () => {
@@ -175,6 +208,7 @@ void app.whenReady().then(async () => {
       });
     });
   }
+  library = openLibrary();
   registerIpc();
   buildMenu();
   createWindow();
@@ -182,6 +216,8 @@ void app.whenReady().then(async () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
+
+app.on("will-quit", () => library?.close());
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();

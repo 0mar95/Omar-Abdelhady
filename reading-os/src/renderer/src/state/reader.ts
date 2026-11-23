@@ -7,6 +7,7 @@ import { countWords } from "../../../shared/pdf/text";
 import { bookIdFor, loadOrExtract, openPdf } from "../pdf";
 import { platform } from "../platform";
 import { useLibrary, type LibraryEntry } from "./library";
+import { reportPosition, useNotes } from "./notes";
 
 export type View = "clean" | "page";
 export type Overlay = null | "toc" | "type" | "palette";
@@ -70,6 +71,8 @@ interface ReaderStore {
   entry: LibraryEntry | null;
   view: View;
   overlay: Overlay;
+  /** Text to prefill the palette with (e.g. a concept clicked in a margin note). */
+  paletteQuery: string;
   currentBlock: string | null;
   currentPage: number;
   jump: JumpTarget | null;
@@ -78,6 +81,7 @@ interface ReaderStore {
   close(): void;
   setView(v: View): void;
   setOverlay(o: Overlay): void;
+  openPalette(query?: string): void;
   jumpTo(t: Omit<JumpTarget, "nonce">): void;
   setPosition(blockId: string): void;
 }
@@ -94,6 +98,7 @@ export const useReader = create<ReaderStore>((set, get) => ({
   entry: null,
   view: "clean",
   overlay: null,
+  paletteQuery: "",
   currentBlock: null,
   currentPage: 0,
   jump: null,
@@ -135,6 +140,8 @@ export const useReader = create<ReaderStore>((set, get) => ({
         currentPage: start ? book.blocks[ix.byId.get(start)!].page : 0,
         jump: start ? { blockId: start, nonce: Date.now() } : null,
       });
+      // Index for search and start margin notes around where the reader is.
+      void useNotes.getState().open(id, book.title, start ? ix.byId.get(start) ?? 0 : 0);
     } catch (e) {
       console.error(e);
       set({ status: "error", error: e instanceof Error ? e.message : String(e), progress: null });
@@ -152,6 +159,7 @@ export const useReader = create<ReaderStore>((set, get) => ({
   },
 
   close() {
+    useNotes.getState().close();
     void get().doc?.loadingTask.destroy();
     set({ status: "idle", book: null, ix: null, doc: null, entry: null, overlay: null, jump: null });
   },
@@ -161,7 +169,11 @@ export const useReader = create<ReaderStore>((set, get) => ({
   },
 
   setOverlay(overlay) {
-    set({ overlay });
+    set({ overlay, paletteQuery: overlay === "palette" ? get().paletteQuery : "" });
+  },
+
+  openPalette(query = "") {
+    set({ overlay: "palette", paletteQuery: query });
   },
 
   jumpTo(t) {
@@ -177,6 +189,7 @@ export const useReader = create<ReaderStore>((set, get) => ({
     const i = ix.byId.get(blockId);
     if (i === undefined) return;
     set({ currentBlock: blockId, currentPage: book.blocks[i].page });
+    reportPosition(entry.id, i);
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       const progress = ix.totalWords ? Math.min(1, ix.wordsBefore[i] / ix.totalWords) : 0;

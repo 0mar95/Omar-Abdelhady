@@ -1,12 +1,15 @@
 // The reflowed reading view: the whole book as clean, typographic text, with
 // AI cards woven in under the paragraphs they explain.
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { MarginNote } from "../../../shared/ipc";
 import { contextFor, useCards, type Card } from "../ai";
+import { useNotes } from "../state/notes";
 import { useReader } from "../state/reader";
 import { FONTS, useSettings } from "../state/settings";
 import { BlockView } from "./BlockView";
 import { InlineCard } from "./InlineCard";
+import { GutterNote, InlineNote } from "./MarginNote";
 
 export function CleanView({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement | null> }) {
   const book = useReader((s) => s.book)!;
@@ -14,7 +17,22 @@ export function CleanView({ scrollRef }: { scrollRef: React.RefObject<HTMLDivEle
   const jump = useReader((s) => s.jump);
   const cards = useCards((s) => s.cards);
   const settings = useSettings();
+  const notes = useNotes((s) => s.notes);
+  const working = useNotes((s) => s.working);
   const lastReported = useRef<string | null>(null);
+  const articleRef = useRef<HTMLElement>(null);
+  const [gutter, setGutter] = useState(false);
+
+  // Notes go in the right margin when there is room for them.
+  useEffect(() => {
+    const el = scrollRef.current;
+    const art = articleRef.current;
+    if (!el || !art) return;
+    const ro = new ResizeObserver(() => setGutter((el.clientWidth - art.getBoundingClientRect().width) / 2 >= 300));
+    ro.observe(el);
+    ro.observe(art);
+    return () => ro.disconnect();
+  }, [scrollRef]);
 
   const cardsByBlock = useMemo(() => {
     const m = new Map<string, Card[]>();
@@ -60,7 +78,9 @@ export function CleanView({ scrollRef }: { scrollRef: React.RefObject<HTMLDivEle
     // Blocks above may grow as they render (content-visibility); settle again.
     const t1 = setTimeout(go, 60);
     const t2 = setTimeout(go, 220);
+    // The jump target is the new reading position (progress, notes, spoiler limit).
     lastReported.current = jump.blockId;
+    useReader.getState().setPosition(jump.blockId);
     if (jump.highlight) highlightIn(el, jump.highlight);
     else if (jump.nonce && Date.now() - jump.nonce < 2000 && useReader.getState().status === "ready") {
       el.classList.remove("landed");
@@ -88,13 +108,24 @@ export function CleanView({ scrollRef }: { scrollRef: React.RefObject<HTMLDivEle
   let prevPage = -1;
   return (
     <div className="reader px-6 pb-[40vh] pt-20 sm:px-12" style={style}>
-      <article className={`book ${settings.indent ? "indented" : ""}`} lang="en">
+      <article ref={articleRef} className={`book ${settings.indent ? "indented" : ""} ${gutter ? "with-gutter" : ""}`} lang="en">
         {book.blocks.map((b) => {
           const label = settings.pageNumbers && b.page !== prevPage ? book.pages[b.page]?.label : undefined;
           prevPage = b.page;
           const attached = cardsByBlock.get(b.id);
+          const note = settings.marginNotes && b.kind === "heading" ? notes.get(b.id) : undefined;
+          const isWorking = settings.marginNotes && working === b.id;
           return (
-            <BlockWithCards key={b.id} block={b} label={label} cards={attached} onRegenerate={regenerate} />
+            <BlockWithCards
+              key={b.id}
+              block={b}
+              label={label}
+              cards={attached}
+              onRegenerate={regenerate}
+              note={note}
+              working={isWorking}
+              gutter={gutter}
+            />
           );
         })}
         <div className="blk mt-24 text-center font-ui text-sm text-ink-3">End of book</div>
@@ -108,15 +139,23 @@ function BlockWithCards({
   label,
   cards,
   onRegenerate,
+  note,
+  working,
+  gutter,
 }: {
   block: Parameters<typeof BlockView>[0]["b"];
   label?: string;
   cards?: Card[];
   onRegenerate(c: Card): void;
+  note?: MarginNote;
+  working?: boolean;
+  gutter: boolean;
 }) {
   return (
     <>
+      {gutter && <GutterNote note={note} working={!!working} level={block.kind === "heading" ? block.level : 2} />}
       <BlockView b={block} pageLabel={label} />
+      {!gutter && <InlineNote note={note} />}
       {cards?.map((c) => <InlineCard key={c.id} card={c} onRegenerate={onRegenerate} />)}
     </>
   );

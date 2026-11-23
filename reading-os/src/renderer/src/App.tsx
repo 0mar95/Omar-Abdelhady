@@ -4,6 +4,7 @@ import { Library } from "./library/Library";
 import { platform } from "./platform";
 import { Reader } from "./reader/Reader";
 import { useLibrary } from "./state/library";
+import { wireBackground } from "./state/notes";
 import { useReader } from "./state/reader";
 import { useSettings } from "./state/settings";
 
@@ -22,6 +23,10 @@ export function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
+
+  useEffect(() => {
+    if (loaded) wireBackground();
+  }, [loaded]);
 
   const openFile = useCallback(async () => {
     const file = await platform.pickPdf();

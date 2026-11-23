@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useCards } from "../ai";
 import { CommandPalette } from "../command/CommandPalette";
+import { useNotes } from "../state/notes";
 import { useReader } from "../state/reader";
 import { useSettings } from "../state/settings";
 import { IconBook, IconLibrary, IconPage, IconSearch, IconToc, IconType } from "../ui/icons";
@@ -168,7 +169,10 @@ export function Reader({ onOpenFile, onLibrary }: { onOpenFile(): void; onLibrar
             {info.minutesLeft > 0 ? `${info.minutesLeft} min left in chapter` : "End of chapter"}
             {info.page ? ` · page ${info.page}` : ""}
           </span>
-          <span>{info.percent}%</span>
+          <span>
+            <IndexProgress />
+            {info.percent}%
+          </span>
         </div>
         <div className="h-[3px] bg-rule/60">
           <div className="h-full bg-accent transition-[width] duration-500" style={{ width: `${info.percent}%` }} />
@@ -212,4 +216,11 @@ function ViewButton({ active, label, onClick, children }: { active: boolean; lab
       {children}
     </button>
   );
+}
+
+/** "Preparing search 40% ·" while the book is being embedded in the background. */
+function IndexProgress() {
+  const st = useNotes((n) => n.status);
+  if (!st || st.state !== "embedding" || !st.chunks) return null;
+  return <span className="mr-2">Preparing search {Math.round((st.embedded / st.chunks) * 100)}% ·</span>;
 }

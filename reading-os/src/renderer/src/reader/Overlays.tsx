@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { platform } from "../platform";
+import { useNotes } from "../state/notes";
 import { useReader } from "../state/reader";
 import { FONTS, useSettings, type FontChoice, type Theme } from "../state/settings";
 import { IconX } from "../ui/icons";
@@ -151,6 +152,19 @@ export function TypePanel() {
             className="w-full rounded-lg bg-paper-2 px-3 py-2 outline-none"
           />
           <datalist id="ollama-models">{models?.map((m) => <option key={m} value={m} />)}</datalist>
+          {platform.hasIndex && (
+            <>
+              <label className="mb-1 mt-3 block text-[12px] text-ink-2">Search model (meaning-based search)</label>
+              <input
+                list="ollama-models"
+                value={s.embedModel}
+                onChange={(e) => s.set({ embedModel: e.target.value })}
+                className="w-full rounded-lg bg-paper-2 px-3 py-2 outline-none"
+              />
+              <IndexLine models={models} embedModel={s.embedModel} />
+              <Toggle label="Margin notes (section summaries)" value={s.marginNotes} onChange={(v) => s.set({ marginNotes: v })} />
+            </>
+          )}
           <p className="mb-0 mt-2 text-[11.5px] leading-snug text-ink-3">
             {aiError
               ? `${aiError} Install it from ollama.com, then run “ollama pull ${s.model}”.`
@@ -164,6 +178,21 @@ export function TypePanel() {
       </div>
     </div>
   );
+}
+
+function IndexLine({ models, embedModel }: { models: string[] | null; embedModel: string }) {
+  const st = useNotes((n) => n.status);
+  if (!st) return null;
+  const installed = !models || models.some((m) => m === embedModel || m.startsWith(`${embedModel}:`));
+  const text =
+    st.state === "no-embed-model" || !installed
+      ? `Not installed — run “ollama pull ${embedModel}”. Exact-word search works meanwhile.`
+      : st.state === "offline"
+        ? "Ollama is off: exact-word search only for now."
+        : st.state === "ready"
+          ? `This book is ready for search by meaning · ${st.notes} margin notes so far.`
+          : `Preparing this book: ${Math.round((st.embedded / Math.max(1, st.chunks)) * 100)}% · ${st.notes} margin notes so far.`;
+  return <p className="mb-1 mt-2 text-[11.5px] leading-snug text-ink-3">{text}</p>;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

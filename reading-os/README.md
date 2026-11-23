@@ -10,8 +10,8 @@ computer. No chat side panel: help appears inside the text, where you need it.
 2. Download the models (about 4.5 GB):
 
    ```sh
-   ollama pull qwen3.5:4b            # explanations, summaries, questions (reads text and images)
-   ollama pull qwen3-embedding:0.6b  # optional for now: semantic search arrives in the next phase
+   ollama pull qwen3.5:4b            # explanations, margin notes, answers (reads text and images)
+   ollama pull qwen3-embedding:0.6b  # search by meaning
    ```
 
    On a 16 GB Mac you can also pull `qwen3.5:9b` and pick it in
@@ -56,9 +56,24 @@ your place is kept).
 under the paragraph. Cards can be collapsed, regenerated, copied or removed,
 and are saved with the book.
 
-**⌘K / Ctrl K** — search the whole book, jump to sections, figures, tables and
-boxes, run commands, or *ask about what you're reading*: the answer appears at
-your position and uses only text up to there, so it never spoils what's ahead.
+**⌘K / Ctrl K — search and ask**
+
+- Search this book or **all books** at once. Results combine exact words
+  (with word variants: "neuralgias" finds "neuralgia") and meaning ("sleep
+  problems in kids" finds the pediatric sleep apnea discussion); matches found
+  only by meaning are marked *related*.
+- Jump straight to sections, figures, tables and boxes by name.
+- **Ask** a question: the answer is drawn from the book's passages and cites
+  them ([1], [2]); click a citation or a source to jump there, or keep the
+  answer on the page as a card.
+- **Only what I've read** limits search and answers to the text before your
+  position, so nothing ahead is spoiled.
+
+**Margin notes** — as you read, each section gets a one-line summary and its
+key concepts in the right margin (under the heading on narrow windows). Notes
+are written in the background for the section you're in and the next few,
+and saved; click a concept to search the book for it. Turn them off in
+Reading settings or from ⌘K.
 
 Everything stays on your machine: books are read from disk, the extracted book
 is cached locally, and the AI only talks to Ollama on `localhost`.
@@ -93,7 +108,30 @@ app and in Node, so it can be tested on its own):
 6. **analyze** — chapters, page labels, links for "Fig 1-1" and "page 138",
    table of contents.
 
-Try it on any PDF without the app:
+## Search index and margin notes
+
+`src/main/library.ts` keeps a local index in `library.sqlite` (in the app's data
+folder), using the SQLite built into Electron — no extra native modules:
+
+- **Chunks:** paragraphs are grouped into ~220-word passages within a section;
+  figures, tables and boxes are chunks of their own; reference lists are
+  searchable by exact words only.
+- **Exact words:** an FTS5 table with Porter stemming, ranked with BM25.
+- **Meaning:** each chunk is embedded with `qwen3-embedding:0.6b` in the
+  background (open book first). Vectors are stored in SQLite and compared by
+  brute-force cosine similarity — about 10 ms per book, ~140 ms across a
+  50-book library. A dedicated vector engine (LanceDB) would add ~200 MB to
+  the app for no gain at this size; the store is isolated in one class so it
+  can be swapped in for very large libraries.
+- **Hybrid ranking:** both result lists are merged with Reciprocal Rank Fusion.
+- **Margin notes:** the section you're reading comes first, then the next few
+  ahead; each note is one structured-JSON request to the chat model. Background
+  work pauses whenever you're waiting on an answer.
+
+Without the embedding model, exact-word search still works; without Ollama,
+everything except AI features works.
+
+Try the extractor on any PDF without the app:
 
 ```sh
 npm run extract -- path/to/book.pdf   # writes .extract/book.json and preview.html
@@ -111,21 +149,24 @@ reading-os/
 └─ src/
    ├─ main/                    Electron main process
    │  ├─ index.ts              window, app:// protocol, files, cache, menus
-   │  └─ ollama.ts             local-only Ollama client, streams over IPC
+   │  ├─ library.ts            search index (FTS5 + vectors), margin notes
+   │  └─ ollama.ts             local-only Ollama client: chat, JSON, embeddings
    ├─ preload/index.ts         the small, typed bridge (window.readingOS)
    ├─ shared/
    │  ├─ model.ts              the book format (blocks, chapters, TOC)
    │  ├─ ipc.ts                main ↔ renderer contract
-   │  └─ pdf/                  the extraction pipeline (+ tests)
+   │  ├─ pdf/                  the extraction pipeline (+ tests)
+   │  └─ search/chunks.ts      chunking, note sections, query building, fusion
    └─ renderer/src/
       ├─ App.tsx, platform.ts  app shell; Electron vs browser services
       ├─ pdf.ts                pdf.js setup, caching, region rendering
       ├─ ai.ts                 prompts, reading context, inline cards
-      ├─ state/                settings, library, open book
+      ├─ search.ts             search and Ask (retrieval + cited answers)
+      ├─ state/                settings, library, open book, notes/index status
       ├─ library/              library screen
       ├─ command/              ⌘K palette
-      └─ reader/               clean view, page view, blocks, selection
-                               menu, inline cards, hover cards, overlays
+      └─ reader/               clean view, page view, blocks, selection menu,
+                               inline cards, margin notes, hover cards, overlays
 ```
 
 ## Development
@@ -139,10 +180,10 @@ npm run typecheck
 
 ## Roadmap
 
-- **Next:** SQLite + full-text index and local embeddings (LanceDB) for hybrid
-  search and whole-book Q&A with citations.
-- Margin notes (section summaries and key concepts), section recaps,
-  "catch me up" and an automatic glossary with hover definitions.
+- Done: reflowed reader, inline AI, hybrid search across the library,
+  cited answers with a reading-position limit, margin notes.
+- Next: automatic glossary with hover definitions and cross-book references,
+  section recaps and "catch me up".
 - Figure descriptions with a vision model, so figures are searchable.
 - OCR for scanned PDFs (`glm-ocr`), then EPUB, Markdown, TXT and MOBI.
 
