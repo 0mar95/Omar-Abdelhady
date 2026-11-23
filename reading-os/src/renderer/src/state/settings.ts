@@ -25,6 +25,8 @@ export interface Settings {
   embedModel: string;
   ollamaUrl: string;
   marginNotes: boolean;
+  /** Dotted underline under glossary terms (hover for a definition). */
+  glossaryMarks: boolean;
   /** Search and questions only use the book up to the reading position. */
   spoilerLimit: boolean;
 }
@@ -42,6 +44,7 @@ export const DEFAULT_SETTINGS: Settings = {
   embedModel: "qwen3-embedding:0.6b",
   ollamaUrl: "http://127.0.0.1:11434",
   marginNotes: true,
+  glossaryMarks: true,
   spoilerLimit: false,
 };
 

@@ -39,6 +39,9 @@ export function TocSheet() {
             <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-3">Contents</div>
             <div className="truncate text-[14px] font-semibold">{book.title}</div>
           </div>
+          <button type="button" onClick={() => setOverlay("glossary")} className="rounded-md px-2 py-1 text-[12px] text-ink-2 hover:bg-paper-2 hover:text-ink">
+            Glossary
+          </button>
           <button type="button" aria-label="Close" onClick={() => setOverlay(null)} className="grid size-8 place-items-center rounded-md text-ink-3 hover:bg-paper-2">
             <IconX size={16} />
           </button>
@@ -142,6 +145,7 @@ export function TypePanel() {
           <Toggle label="Justify text" value={s.justify} onChange={(v) => s.set({ justify: v })} />
           <Toggle label="Indent paragraphs (book style)" value={s.indent} onChange={(v) => s.set({ indent: v })} />
           <Toggle label="Original page numbers in margin" value={s.pageNumbers} onChange={(v) => s.set({ pageNumbers: v })} />
+          <Toggle label="Underline glossary terms (hover to define)" value={s.glossaryMarks} onChange={(v) => s.set({ glossaryMarks: v })} />
         </Section>
         <Section title="AI (on this computer)">
           <label className="mb-1 block text-[12px] text-ink-2">Model</label>

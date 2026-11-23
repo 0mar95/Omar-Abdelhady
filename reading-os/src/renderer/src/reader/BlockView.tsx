@@ -5,8 +5,11 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 import { create } from "zustand";
 import type { Block, BoxBlock, FigureBlock, Span, TableBlock } from "../../../shared/model";
+import type { TermMatch } from "../../../shared/glossary/extract";
 import { renderRegion } from "../pdf";
+import { useGlossary } from "../state/glossary";
 import { useReader } from "../state/reader";
+import { useSettings } from "../state/settings";
 import { IconBulb, IconImage } from "../ui/icons";
 
 const URL_RE = /(https?:\/\/[^\s)]+[^\s).,;])/g;
@@ -29,7 +32,37 @@ function linkify(text: string, key: string): ReactNode[] {
   return parts;
 }
 
-export function Spans({ spans, chapter }: { spans: Span[]; chapter: number }) {
+/** Wraps the first mention of each glossary term (per block) for hover definitions. */
+/** Per-block marking state: terms allowed here, and those already marked. */
+export interface TermMarks {
+  allow: Set<string>;
+  done: Set<string>;
+}
+
+function markTerms(text: string, match: (t: string) => TermMatch[], marks: TermMarks, key: string): ReactNode {
+  const hits = match(text).filter((m) => marks.allow.has(m.key) && !marks.done.has(m.key));
+  if (!hits.length) return text;
+  const out: ReactNode[] = [];
+  let last = 0;
+  for (const h of hits) {
+    if (marks.done.has(h.key)) continue;
+    marks.done.add(h.key);
+    if (h.start > last) out.push(text.slice(last, h.start));
+    out.push(
+      <span key={`${key}t${h.start}`} className="term" data-term={h.key}>
+        {text.slice(h.start, h.end)}
+      </span>,
+    );
+    last = h.end;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
+export function Spans({ spans, chapter, seen }: { spans: Span[]; chapter: number; seen?: TermMarks }) {
+  const match = useGlossary((g) => g.match);
+  const enabled = useSettings((st) => st.glossaryMarks);
+  const mark = enabled && match && seen && seen.allow.size ? match : null;
   return (
     <>
       {spans.map((s, i) => {
@@ -39,7 +72,8 @@ export function Spans({ spans, chapter }: { spans: Span[]; chapter: number }) {
               {s.text}
             </sup>
           );
-        let node: ReactNode = s.text.includes("http") ? linkify(s.text, String(i)) : s.text;
+        const plain = !s.xref && s.pageRef === undefined && !s.sup && !s.sub;
+        let node: ReactNode = s.text.includes("http") ? linkify(s.text, String(i)) : mark && plain ? markTerms(s.text, mark, seen!, String(i)) : s.text;
         if (s.sup) node = <sup>{node}</sup>;
         if (s.sub) node = <sub>{node}</sub>;
         if (s.i) node = <em>{node}</em>;
@@ -217,6 +251,8 @@ function Table({ b }: { b: TableBlock }) {
 }
 
 function Box({ b }: { b: BoxBlock }) {
+  const allow = useGlossary((g) => g.allowed.get(b.id));
+  const seen: TermMarks = { allow: allow ?? EMPTY, done: new Set() };
   return (
     <aside className="my-8 rounded-lg bg-accent-soft/60 px-5 py-4 text-[0.9em] shadow-[inset_3px_0_0_var(--accent)]" data-key={b.key}>
       <div className="mb-2 font-ui text-[0.85em] leading-snug">
@@ -230,13 +266,13 @@ function Box({ b }: { b: BoxBlock }) {
           <ul key={x.id} className="!mb-2">
             {x.items.map((it, i) => (
               <li key={i}>
-                <Spans spans={it} chapter={b.chapter} />
+                <Spans spans={it} chapter={b.chapter} seen={seen} />
               </li>
             ))}
           </ul>
         ) : (
           <p key={x.id} className={`!mb-2 !text-left ${x.small ? "small" : ""}`}>
-            <Spans spans={x.spans} chapter={b.chapter} />
+            <Spans spans={x.spans} chapter={b.chapter} seen={seen} />
           </p>
         ),
       )}
@@ -244,7 +280,12 @@ function Box({ b }: { b: BoxBlock }) {
   );
 }
 
+const EMPTY = new Set<string>();
+
 function BlockInner({ b }: { b: Block }) {
+  // Glossary terms are marked at their first mention in each section.
+  const allow = useGlossary((g) => g.allowed.get(b.id));
+  const seen: TermMarks = { allow: allow ?? EMPTY, done: new Set() };
   switch (b.kind) {
     case "heading":
       if (b.level === 1)
@@ -262,13 +303,13 @@ function BlockInner({ b }: { b: Block }) {
     case "paragraph":
       return (
         <p className={b.small ? "small" : undefined}>
-          <Spans spans={b.spans} chapter={b.chapter} />
+          <Spans spans={b.spans} chapter={b.chapter} seen={seen} />
         </p>
       );
     case "list": {
       const items = b.items.map((it, i) => (
         <li key={i}>
-          <Spans spans={it} chapter={b.chapter} />
+          <Spans spans={it} chapter={b.chapter} seen={seen} />
         </li>
       ));
       return b.ordered ? <ol>{items}</ol> : <ul>{items}</ul>;
@@ -288,7 +329,7 @@ function BlockInner({ b }: { b: Block }) {
           <ul className="!m-0 space-y-2 !pl-5 text-[0.86em] leading-relaxed text-ink-2">
             {b.items.map((it, i) => (
               <li key={i}>
-                <Spans spans={it} chapter={b.chapter} />
+                <Spans spans={it} chapter={b.chapter} seen={seen} />
               </li>
             ))}
           </ul>

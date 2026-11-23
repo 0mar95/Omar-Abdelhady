@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
-import type { ChatChunk, ChatRequest, IndexStatus, NoteEvent, ReadingOSApi } from "../shared/ipc";
+import type { ChatChunk, ChatRequest, GlossaryEvent, IndexStatus, NoteEvent, ReadingOSApi } from "../shared/ipc";
 
 const api: ReadingOSApi = {
   platform: process.platform,
@@ -33,6 +33,14 @@ const api: ReadingOSApi = {
     return () => ipcRenderer.removeListener("notes:event", listener);
   },
   readingPosition: (bookId, blockIndex) => ipcRenderer.invoke("reader:position", bookId, blockIndex),
+  glossaryDefinitions: (bookId) => ipcRenderer.invoke("glossary:definitions", bookId),
+  glossaryDefine: (bookId, req) => ipcRenderer.invoke("glossary:define", bookId, req),
+  onGlossaryEvent: (cb) => {
+    const listener = (_: unknown, e: GlossaryEvent) => cb(e);
+    ipcRenderer.on("glossary:event", listener);
+    return () => ipcRenderer.removeListener("glossary:event", listener);
+  },
+  glossaryMentions: (phrases, exclude) => ipcRenderer.invoke("glossary:mentions", phrases, exclude),
   onMenu: (cb) => {
     const listener = (_: unknown, action: string) => cb(action);
     ipcRenderer.on("menu", listener);

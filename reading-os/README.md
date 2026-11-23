@@ -69,6 +69,22 @@ and are saved with the book.
 - **Only what I've read** limits search and answers to the text before your
   position, so nothing ahead is spoiled.
 
+**Glossary with hover definitions** — the app builds the book's glossary
+from its own text: acronyms where they are spelled out ("temporomandibular
+disorders (TMDs)") and terms the book defines ("*Nociplastic pain* is
+defined as …"). The first mention of each term in a section gets a quiet
+dotted underline; hover it to see:
+
+- a one-sentence plain-language definition from the local model (written the
+  first time you hover, then saved),
+- the book's own defining sentence and its page,
+- how many passages mention it, with a jump to the next mention,
+- the same term in your other books.
+
+Press **G** for the whole glossary A–Z (filterable); glossary entries also
+appear at the top of ⌘K results. Underlines can be turned off in Reading
+settings.
+
 **Margin notes** — as you read, each section gets a one-line summary and its
 key concepts in the right margin (under the heading on narrow windows). Notes
 are written in the background for the section you're in and the next few,
@@ -84,6 +100,7 @@ is cached locally, and the AI only talks to Ollama on `localhost`.
 | --- | --- |
 | ⌘K / Ctrl K | Search, jump, commands, ask |
 | T | Table of contents |
+| G | Glossary (A–Z) |
 | V | Clean view ↔ original pages |
 | [ / ] | Previous / next chapter |
 | ⌘+ / ⌘− | Text size |
@@ -127,6 +144,11 @@ folder), using the SQLite built into Electron — no extra native modules:
 - **Margin notes:** the section you're reading comes first, then the next few
   ahead; each note is one structured-JSON request to the chat model. Background
   work pauses whenever you're waiting on an answer.
+- **Glossary:** terms are extracted without AI (`src/shared/glossary/`:
+  Schwartz–Hearst for acronyms, italic terms in defining sentences, plural and
+  proper-name handling). A hovered term's short definition jumps to the front
+  of the background queue; other-book mentions are a phrase query on the
+  full-text index.
 
 Without the embedding model, exact-word search still works; without Ollama,
 everything except AI features works.
@@ -156,17 +178,19 @@ reading-os/
    │  ├─ model.ts              the book format (blocks, chapters, TOC)
    │  ├─ ipc.ts                main ↔ renderer contract
    │  ├─ pdf/                  the extraction pipeline (+ tests)
+   │  ├─ glossary/extract.ts   glossary terms, definitions, mention matching
    │  └─ search/chunks.ts      chunking, note sections, query building, fusion
    └─ renderer/src/
       ├─ App.tsx, platform.ts  app shell; Electron vs browser services
       ├─ pdf.ts                pdf.js setup, caching, region rendering
       ├─ ai.ts                 prompts, reading context, inline cards
       ├─ search.ts             search and Ask (retrieval + cited answers)
-      ├─ state/                settings, library, open book, notes/index status
+      ├─ state/                settings, library, open book, notes, glossary
       ├─ library/              library screen
       ├─ command/              ⌘K palette
       └─ reader/               clean view, page view, blocks, selection menu,
-                               inline cards, margin notes, hover cards, overlays
+                               inline cards, margin notes, hover cards (citations,
+                               figures, glossary terms), glossary sheet, overlays
 ```
 
 ## Development
@@ -180,10 +204,10 @@ npm run typecheck
 
 ## Roadmap
 
-- Done: reflowed reader, inline AI, hybrid search across the library,
-  cited answers with a reading-position limit, margin notes.
-- Next: automatic glossary with hover definitions and cross-book references,
-  section recaps and "catch me up".
+- Done: reflowed reader, inline AI, hybrid search across the library, cited
+  answers with a reading-position limit, margin notes, glossary with hover
+  definitions and cross-book mentions.
+- Next: section recaps and "catch me up" when reopening a book.
 - Figure descriptions with a vision model, so figures are searchable.
 - OCR for scanned PDFs (`glm-ocr`), then EPUB, Markdown, TXT and MOBI.
 

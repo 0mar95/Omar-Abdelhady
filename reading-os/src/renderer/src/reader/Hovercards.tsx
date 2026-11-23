@@ -2,13 +2,19 @@
 // hovering "Fig 1-1" / "Table 2-3" / "Box 4-2" previews it. Clicks jump.
 
 import { useEffect, useRef, useState } from "react";
+import type { BookMention } from "../../../shared/ipc";
 import type { Block } from "../../../shared/model";
+import { platform } from "../platform";
+import { useGlossary } from "../state/glossary";
+import { useLibrary } from "../state/library";
 import { blockAt, useReader } from "../state/reader";
+import { IconSearch, IconSparkle } from "../ui/icons";
 import { PageCrop, Spans } from "./BlockView";
 
 type Target =
   | { kind: "cite"; rect: DOMRect; chapter: number; nums: number[] }
-  | { kind: "xref"; rect: DOMRect; key: string };
+  | { kind: "xref"; rect: DOMRect; key: string }
+  | { kind: "term"; rect: DOMRect; key: string; el: HTMLElement };
 
 export function Hovercards({ root }: { root: React.RefObject<HTMLElement | null> }) {
   const [target, setTarget] = useState<Target | null>(null);
@@ -30,6 +36,8 @@ export function Hovercards({ root }: { root: React.RefObject<HTMLElement | null>
         };
       const xref = node.closest<HTMLElement>(".xref");
       if (xref) return { kind: "xref", rect: xref.getBoundingClientRect(), key: xref.dataset.xref ?? "" };
+      const term = node.closest<HTMLElement>(".term");
+      if (term) return { kind: "term", rect: term.getBoundingClientRect(), key: term.dataset.term ?? "", el: term };
       return null;
     };
     const over = (e: MouseEvent) => {
@@ -37,7 +45,8 @@ export function Hovercards({ root }: { root: React.RefObject<HTMLElement | null>
       if (!t) return;
       clearTimeout(hideTimer.current);
       clearTimeout(showTimer.current);
-      showTimer.current = setTimeout(() => setTarget(t), 160);
+      // Terms wait a little longer: readers' pointers often rest on words.
+      showTimer.current = setTimeout(() => setTarget(t), t.kind === "term" ? 350 : 160);
     };
     const out = (e: MouseEvent) => {
       if (!targetFor(e.target as Element)) return;
@@ -65,9 +74,9 @@ export function Hovercards({ root }: { root: React.RefObject<HTMLElement | null>
         jumpTo({ page: Number(marker.dataset.gotoPage) });
         return;
       }
-      const cite = node.closest<HTMLElement>("sup.cite");
-      if (cite) {
-        const t = targetFor(cite);
+      const pinned = node.closest<HTMLElement>("sup.cite, .term");
+      if (pinned && !window.getSelection()?.toString()) {
+        const t = targetFor(pinned);
         if (t) setTarget(t);
       }
     };
@@ -84,8 +93,14 @@ export function Hovercards({ root }: { root: React.RefObject<HTMLElement | null>
     };
   }, [root]);
 
+  useEffect(() => {
+    if (target?.kind !== "term") return;
+    target.el.classList.add("active");
+    return () => target.el.classList.remove("active");
+  }, [target]);
+
   if (!target) return null;
-  const width = target.kind === "xref" ? 440 : 400;
+  const width = target.kind === "xref" ? 440 : target.kind === "term" ? 390 : 400;
   const left = Math.min(window.innerWidth - width - 16, Math.max(16, target.rect.left + target.rect.width / 2 - width / 2));
   const below = target.rect.bottom + 320 < window.innerHeight || target.rect.top < 340;
   const style: React.CSSProperties = below
@@ -101,7 +116,13 @@ export function Hovercards({ root }: { root: React.RefObject<HTMLElement | null>
       onMouseLeave={() => (hideTimer.current = setTimeout(() => setTarget(null), 200))}
       className="fixed z-40 max-h-[60vh] overflow-y-auto rounded-xl bg-card p-4 font-ui text-[13px] leading-snug text-[var(--card-ink)] shadow-[var(--shadow)] ring-1 ring-rule"
     >
-      {target.kind === "cite" ? <CiteCard chapter={target.chapter} nums={target.nums} onDone={() => setTarget(null)} /> : <XrefCard refKey={target.key} />}
+      {target.kind === "cite" ? (
+        <CiteCard chapter={target.chapter} nums={target.nums} onDone={() => setTarget(null)} />
+      ) : target.kind === "term" ? (
+        <TermCard termKey={target.key} onDone={() => setTarget(null)} />
+      ) : (
+        <XrefCard refKey={target.key} />
+      )}
     </div>
   );
 }
@@ -196,6 +217,98 @@ function XrefCard({ refKey }: { refKey: string }) {
           </ul>
         </>
       )}
+    </div>
+  );
+}
+
+/** Definition card for a glossary term: plain-language meaning, the book's own words, where else it appears. */
+function TermCard({ termKey, onDone }: { termKey: string; onDone(): void }) {
+  const t = useGlossary((g) => g.byKey.get(termKey));
+  const ai = useGlossary((g) => g.ai[termKey]);
+  const pending = useGlossary((g) => g.pending.has(termKey));
+  const book = useReader((r) => r.book);
+  const ix = useReader((r) => r.ix);
+  const [others, setOthers] = useState<BookMention[] | null>(null);
+
+  useEffect(() => {
+    useGlossary.getState().request(termKey);
+    const term = useGlossary.getState().byKey.get(termKey);
+    const b = useReader.getState().book;
+    if (!term || !b) return;
+    const phrases = term.kind === "acronym" ? [term.key, ...(term.expansion ? [term.expansion] : [])] : [term.term];
+    let alive = true;
+    void platform.glossaryMentions(phrases, b.id).then((m) => alive && setOthers(m));
+    return () => {
+      alive = false;
+    };
+  }, [termKey]);
+
+  if (!t || !book || !ix) return null;
+  const cur = ix.byId.get(useReader.getState().currentBlock ?? "") ?? 0;
+  const next = t.occurrences.find((o) => o > cur + 1) ?? t.occurrences[0];
+  const go = (blockId: string) => {
+    onDone();
+    useReader.getState().setView("clean");
+    useReader.getState().jumpTo({ blockId, highlight: t.kind === "acronym" ? t.key : t.term });
+  };
+  const openOther = (m: BookMention) => {
+    onDone();
+    const entry = useLibrary.getState().entries.find((e) => e.id === m.bookId);
+    if (entry) void useReader.getState().openEntry(entry).then(() => useReader.getState().jumpTo({ blockId: m.blockId, highlight: t.kind === "acronym" ? t.key : t.term }));
+  };
+
+  return (
+    <div data-testid="term-card">
+      <div className="mb-2 flex items-baseline gap-2">
+        <span className="text-[15px] font-semibold text-ink">{t.term}</span>
+        {t.expansion && <span className="text-[13px] text-ink-2">{t.expansion}</span>}
+      </div>
+      {ai ? (
+        <div className="mb-2.5 flex gap-1.5 text-[13.5px] leading-snug text-ink">
+          <IconSparkle size={13} className="mt-[3px] shrink-0 text-accent" />
+          <span>{ai}</span>
+        </div>
+      ) : pending ? (
+        <div className="mb-2.5 flex items-center gap-1.5 text-[12.5px] text-ink-3">
+          <IconSparkle size={13} className="animate-pulse text-accent" /> Writing a short definition…
+        </div>
+      ) : null}
+      <blockquote className="m-0 border-l-2 border-rule pl-2.5 text-[12.5px] italic leading-snug text-ink-2">
+        {t.definition.length > 300 ? `${t.definition.slice(0, 300)}…` : t.definition}
+      </blockquote>
+      <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
+        <button type="button" onClick={() => go(t.blockId)} className="text-link hover:underline">
+          Defined on page {book.pages[t.page]?.label}
+        </button>
+        {t.occurrences.length > 1 && next !== undefined && (
+          <button type="button" onClick={() => go(book.blocks[next].id)} className="text-link hover:underline">
+            {t.occurrences.length} passages · next mention →
+          </button>
+        )}
+      </div>
+      {others && others.length > 0 && (
+        <div className="mt-3 border-t border-rule pt-2">
+          <div className="mb-1 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-ink-3">In your other books</div>
+          {others.map((m) => (
+            <button key={m.bookId} type="button" onClick={() => openOther(m)} className="flex w-full items-baseline justify-between gap-3 rounded px-1 py-0.5 text-left text-[12.5px] hover:bg-paper-2">
+              <span className="truncate text-ink">{m.title}</span>
+              <span className="shrink-0 text-ink-3">
+                {m.count} passage{m.count === 1 ? "" : "s"} →
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={() => {
+          onDone();
+          useReader.getState().openPalette(t.kind === "acronym" ? t.key : t.term);
+        }}
+        className="mt-2.5 flex items-center gap-1.5 text-[12px] text-ink-3 hover:text-ink"
+      >
+        <IconSearch size={12} /> Search or ask about “{t.term}”
+      </button>
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { spansText } from "../../../shared/model";
 import { useCards } from "../ai";
 import type { ChatHandle } from "../platform";
 import { askBooks, searchBooks } from "../search";
+import { useGlossary } from "../state/glossary";
 import { useLibrary } from "../state/library";
 import { useReader } from "../state/reader";
 import { useSettings, type Theme } from "../state/settings";
@@ -143,6 +144,7 @@ export function CommandPalette({ onOpenFile, onLibrary }: { onOpenFile(): void; 
     if (book)
       commands.push(
         { id: "c-toc", group: "Commands", title: "Table of contents", icon: <IconToc />, run: () => setOverlay("toc") },
+        { id: "c-glossary", group: "Commands", title: "Glossary (A–Z)", icon: <IconList />, run: () => setOverlay("glossary") },
         { id: "c-type", group: "Commands", title: "Reading settings (font, size, theme, AI)", icon: <IconType />, run: () => setOverlay("type") },
         {
           id: "c-view",
@@ -176,6 +178,33 @@ export function CommandPalette({ onOpenFile, onLibrary }: { onOpenFile(): void; 
       run: ask,
     });
     out.push(...commands.filter((c) => terms.every((t) => String(c.title).toLowerCase().includes(t))));
+    if (book) {
+      // Glossary: the book's own definitions, shown right in the list.
+      const g = useGlossary.getState();
+      let n = 0;
+      for (const t of g.terms) {
+        const hay = `${t.term} ${t.expansion ?? ""}`.toLowerCase();
+        if (!terms.every((w) => hay.includes(w))) continue;
+        const def = g.ai[t.key] ?? t.definition;
+        out.push({
+          id: `g-${t.key}`,
+          group: "Glossary",
+          title: (
+            <>
+              <span className="font-semibold">{t.term}</span>
+              {t.expansion && <span className="text-ink-2"> · {t.expansion}</span>}
+            </>
+          ),
+          detail: def.length > 150 ? `${def.slice(0, 150)}…` : def,
+          icon: <IconSparkle />,
+          run: () => {
+            setView("clean");
+            jumpTo({ blockId: t.blockId, highlight: t.kind === "acronym" ? t.key : t.term });
+          },
+        });
+        if (++n >= 4) break;
+      }
+    }
     if (bookScope && book && ix) {
       let n = 0;
       for (const t of book.toc) {
@@ -196,7 +225,7 @@ export function CommandPalette({ onOpenFile, onLibrary }: { onOpenFile(): void; 
       n = 0;
       for (const b of book.blocks) {
         if ((b.kind !== "figure" && b.kind !== "table" && b.kind !== "box") || !b.key) continue;
-        const caption = b.kind === "box" ? spansText(b.title) : spansText(b.caption);
+        const caption = (b.kind === "box" ? spansText(b.title) : spansText(b.caption)).replace(new RegExp(`^\\s*${b.key.replace(/[-]/g, "\\s*-\\s*")}\\s*`), "");
         const text = `${b.key} ${caption} ${b.kind === "figure" ? b.labels ?? "" : ""}`.toLowerCase();
         if (!terms.every((w) => text.includes(w))) continue;
         out.push({

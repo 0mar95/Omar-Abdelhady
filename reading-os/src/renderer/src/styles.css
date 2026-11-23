@@ -284,6 +284,21 @@ button {
 .book .pageref:hover {
   text-decoration-color: var(--link);
 }
+/* Glossary terms: a quiet dotted underline; hover for the definition. */
+.book .term {
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in srgb, var(--ink-3) 60%, transparent);
+  text-underline-offset: 0.22em;
+  cursor: help;
+  border-radius: 2px;
+}
+.book .term:hover,
+.book .term.active {
+  text-decoration-color: var(--accent);
+  background: color-mix(in srgb, var(--accent-soft) 70%, transparent);
+}
 .book a.ext {
   color: var(--link);
   word-break: break-word;

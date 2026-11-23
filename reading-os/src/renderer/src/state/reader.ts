@@ -7,10 +7,11 @@ import { countWords } from "../../../shared/pdf/text";
 import { bookIdFor, loadOrExtract, openPdf } from "../pdf";
 import { platform } from "../platform";
 import { useLibrary, type LibraryEntry } from "./library";
+import { setGlossaryContext, useGlossary } from "./glossary";
 import { reportPosition, useNotes } from "./notes";
 
 export type View = "clean" | "page";
-export type Overlay = null | "toc" | "type" | "palette";
+export type Overlay = null | "toc" | "type" | "palette" | "glossary";
 
 /** Lookups derived once per book. */
 export interface BookIndex {
@@ -142,6 +143,8 @@ export const useReader = create<ReaderStore>((set, get) => ({
       });
       // Index for search and start margin notes around where the reader is.
       void useNotes.getState().open(id, book.title, start ? ix.byId.get(start) ?? 0 : 0);
+      setGlossaryContext(book, ix);
+      useGlossary.getState().load(book, ix);
     } catch (e) {
       console.error(e);
       set({ status: "error", error: e instanceof Error ? e.message : String(e), progress: null });
@@ -160,6 +163,7 @@ export const useReader = create<ReaderStore>((set, get) => ({
 
   close() {
     useNotes.getState().close();
+    useGlossary.getState().close();
     void get().doc?.loadingTask.destroy();
     set({ status: "idle", book: null, ix: null, doc: null, entry: null, overlay: null, jump: null });
   },

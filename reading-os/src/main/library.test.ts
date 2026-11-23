@@ -42,7 +42,7 @@ const head = (id: string, level: 1 | 2 | 3, text: string, chapter: number): Bloc
 
 const filler = (topic: string) => `${topic} is discussed at length here with clinical detail and examples. `.repeat(12);
 
-function makeBook(): BookDoc {
+function makeBook(id = "book1"): BookDoc {
   const blocks: Block[] = [
     head("h1", 1, "Neuropathic Pain", 0),
     head("h2", 2, "Trigeminal neuralgia", 0),
@@ -54,8 +54,8 @@ function makeBook(): BookDoc {
   ];
   return {
     version: EXTRACTOR_VERSION,
-    id: "book1",
-    title: "Test Book",
+    id,
+    title: id === "book1" ? "Test Book" : "Second Book",
     fileName: "test.pdf",
     pageCount: 4,
     pages: [0, 1, 2, 3].map((i) => ({ w: 400, h: 600, label: String(i + 1) })),
@@ -72,8 +72,15 @@ let lib: LibraryIndex | null = null;
 function open(over: Partial<LibraryDeps> = {}) {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "readingos-"));
   const notes: string[] = [];
+  const defined: string[] = [];
+  const events: unknown[] = [];
   const deps: LibraryDeps = {
-    loadBook: async () => makeBook(),
+    loadBook: async (id) => makeBook(id),
+    writeDefinition: async (_cfg, title, req) => {
+      defined.push(req.key);
+      return { definition: `  A ${req.term} definition from ${title}.  ` };
+    },
+    emitGlossary: (e) => events.push(e),
     embed: async (_cfg, texts) => fakeEmbed(texts),
     writeNote: async (_cfg, _book, s) => {
       notes.push(s.blockId);
@@ -87,7 +94,7 @@ function open(over: Partial<LibraryDeps> = {}) {
     ...over,
   };
   lib = new LibraryIndex(path.join(dir, "lib.sqlite"), deps);
-  return { lib, notes };
+  return { lib, notes, defined, events };
 }
 
 afterEach(() => {
@@ -149,6 +156,31 @@ describe("LibraryIndex", () => {
     await lib.whenIdle();
     expect(lib.status("book1").state).toBe("no-embed-model");
     expect((await lib.search({ q: "carbamazepine", bookId: "book1" }))[0].blockId).toBe("p1");
+  });
+});
+
+describe("glossary", () => {
+  it("defines a hovered term before background work, stores and reuses it", async () => {
+    const { lib, defined, events, notes } = open();
+    await lib.indexBook("book1", "Test Book", 0);
+    expect(lib.requestDefinition("book1", { key: "bruxism", term: "bruxism", definition: "Sleep bruxism is rhythmic jaw muscle activity." })).toBeNull();
+    await lib.whenIdle();
+    expect(defined).toEqual(["bruxism"]);
+    // Asked while notes were running, but answered before most of them.
+    expect(notes.length).toBeGreaterThan(0);
+    expect(events).toContainEqual({ bookId: "book1", key: "bruxism", definition: "A bruxism definition from Test Book." });
+    expect(lib.definitions("book1")).toEqual({ bruxism: "A bruxism definition from Test Book." });
+    expect(lib.requestDefinition("book1", { key: "bruxism", term: "bruxism", definition: "" })).toBe("A bruxism definition from Test Book.");
+    expect(defined).toEqual(["bruxism"]);
+  });
+
+  it("finds a term in other books, with word variants", async () => {
+    const { lib } = open();
+    await lib.indexBook("book1", "Test Book", 0);
+    await lib.indexBook("book2", "Second Book", 0);
+    const m = lib.mentions(["burning mouth syndromes", "BMS"], "book1");
+    expect(m).toEqual([{ bookId: "book2", title: "Second Book", count: expect.any(Number), blockId: "p2" }]);
+    expect(lib.mentions(["unicorn physiology"], "book1")).toEqual([]);
   });
 });
 

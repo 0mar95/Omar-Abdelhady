@@ -7,6 +7,7 @@ import { useSettings } from "../state/settings";
 import { IconBook, IconLibrary, IconPage, IconSearch, IconToc, IconType } from "../ui/icons";
 import { CleanView } from "./CleanView";
 import { Hovercards } from "./Hovercards";
+import { GlossarySheet } from "./GlossarySheet";
 import { TocSheet, TypePanel, ZoomOverlay } from "./Overlays";
 import { PageView } from "./PageView";
 import { SelectionMenu } from "./SelectionMenu";
@@ -48,7 +49,7 @@ export function Reader({ onOpenFile, onLibrary }: { onOpenFile(): void; onLibrar
     };
   }, []);
 
-  // Keyboard: ⌘K palette, T contents, V view, [ ] chapters, ⌘+/⌘- size.
+  // Keyboard: ⌘K palette, T contents, G glossary, V view, [ ] chapters, ⌘+/⌘- size.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
@@ -73,8 +74,14 @@ export function Reader({ onOpenFile, onLibrary }: { onOpenFile(): void; onLibrar
         return;
       }
       if (typing || mod || e.altKey || useReader.getState().overlay) return;
-      if (e.key === "t") setOverlay("toc");
-      else if (e.key === "v") setView(useReader.getState().view === "clean" ? "page" : "clean");
+      // preventDefault keeps the letter out of the filter box the overlay focuses.
+      if (e.key === "t") {
+        e.preventDefault();
+        setOverlay("toc");
+      } else if (e.key === "g") {
+        e.preventDefault();
+        setOverlay("glossary");
+      } else if (e.key === "v") setView(useReader.getState().view === "clean" ? "page" : "clean");
       else if (e.key === "]" || e.key === "[") {
         const cur = ix.byId.get(useReader.getState().currentBlock ?? "") ?? 0;
         const ch = book.blocks[cur]?.chapter ?? 0;
@@ -182,6 +189,7 @@ export function Reader({ onOpenFile, onLibrary }: { onOpenFile(): void; onLibrar
       <SelectionMenu scrollRoot={scrollRef} />
       <Hovercards root={scrollRef} />
       {overlay === "toc" && <TocSheet />}
+      {overlay === "glossary" && <GlossarySheet />}
       {overlay === "type" && <TypePanel />}
       {overlay === "palette" && <CommandPalette onOpenFile={onOpenFile} onLibrary={onLibrary} />}
       <ZoomOverlay />

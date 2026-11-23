@@ -4,7 +4,7 @@
 // can be tested on its own.
 
 import { DatabaseSync } from "node:sqlite";
-import type { AiConfig, IndexStatus, MarginNote, NoteEvent, SearchHit, SearchParams } from "../shared/ipc.ts";
+import type { AiConfig, BookMention, DefineRequest, GlossaryEvent, IndexStatus, MarginNote, NoteEvent, SearchHit, SearchParams } from "../shared/ipc.ts";
 import { EXTRACTOR_VERSION, type BookDoc } from "../shared/model.ts";
 import { buildChunks, embedPrefix, embedText, ftsQuery, fuse, noteSections, type NoteSection, type Ranked } from "../shared/search/chunks.ts";
 
@@ -25,6 +25,8 @@ export interface LibraryDeps {
   loadBook(bookId: string): Promise<BookDoc | null>;
   embed(cfg: AiConfig, texts: string[]): Promise<Float32Array[]>;
   writeNote(cfg: AiConfig, book: BookDoc, section: NoteSection): Promise<NoteDraft>;
+  writeDefinition(cfg: AiConfig, bookTitle: string, req: DefineRequest): Promise<{ definition: string }>;
+  emitGlossary(e: GlossaryEvent): void;
   userBusy(): boolean;
   emitStatus(s: IndexStatus): void;
   emitNote(e: NoteEvent): void;
@@ -68,6 +70,8 @@ export class LibraryIndex {
   private books = new Map<string, { doc: BookDoc; sections: NoteSection[] }>();
   private working = false;
   private failedNotes = new Set<string>();
+  /** Definitions the reader asked for (hovered terms), most recent first. */
+  private defineQueue: { bookId: string; req: DefineRequest }[] = [];
   private retryTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(file: string, deps: LibraryDeps) {
@@ -85,6 +89,8 @@ export class LibraryIndex {
       CREATE TABLE IF NOT EXISTS vectors (chunk_id INTEGER PRIMARY KEY, model TEXT NOT NULL, vec BLOB NOT NULL);
       CREATE TABLE IF NOT EXISTS notes (book_id TEXT, block_id TEXT, model TEXT, summary TEXT, concepts TEXT, created_at INTEGER,
         PRIMARY KEY (book_id, block_id));
+      CREATE TABLE IF NOT EXISTS glossary (book_id TEXT, key TEXT, term TEXT, definition TEXT, model TEXT, created_at INTEGER,
+        PRIMARY KEY (book_id, key));
     `);
   }
 
@@ -201,6 +207,14 @@ export class LibraryIndex {
   }
 
   private nextJob(): (() => Promise<void>) | null {
+    // A hovered term is waiting on screen: it goes first.
+    if (this.defineQueue.length && this.notesState === "ok") {
+      const job = this.defineQueue.shift()!;
+      return () => this.define(job.bookId, job.req);
+    }
+    if (this.defineQueue.length) {
+      for (const j of this.defineQueue.splice(0)) this.deps.emitGlossary({ bookId: j.bookId, key: j.req.key, failed: true });
+    }
     const near = this.pendingNote(NOTES_BEHIND, 2);
     if (near) return () => this.makeNote(near.bookId, near.section);
     const batch = this.embedState === "ok" ? this.pendingEmbeds() : null;
@@ -317,6 +331,63 @@ export class LibraryIndex {
       this.deps.emitNote({ type: "working", bookId, blockId: null });
     }
     this.deps.emitStatus(this.status(bookId));
+  }
+
+  // ---------- glossary ----------
+
+  definitions(bookId: string): Record<string, string> {
+    const rows = this.db.prepare("SELECT key, definition FROM glossary WHERE book_id = ?").all(bookId) as { key: string; definition: string }[];
+    return Object.fromEntries(rows.map((r) => [r.key, r.definition]));
+  }
+
+  /** A stored definition, or null after queueing one (delivered through emitGlossary). */
+  requestDefinition(bookId: string, req: DefineRequest): string | null {
+    const row = this.db.prepare("SELECT definition FROM glossary WHERE book_id = ? AND key = ?").get(bookId, req.key) as { definition: string } | undefined;
+    if (row) return row.definition;
+    this.defineQueue = [{ bookId, req }, ...this.defineQueue.filter((j) => !(j.bookId === bookId && j.req.key === req.key))].slice(0, 12);
+    this.kick();
+    return null;
+  }
+
+  private async define(bookId: string, req: DefineRequest): Promise<void> {
+    const title = (this.db.prepare("SELECT title FROM books WHERE id = ?").get(bookId) as { title: string } | undefined)?.title ?? "";
+    try {
+      const out = await this.deps.writeDefinition(this.cfg, title, req);
+      const definition = String(out?.definition ?? "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 280);
+      if (!definition) throw new Error("empty definition");
+      this.db
+        .prepare("INSERT OR REPLACE INTO glossary (book_id, key, term, definition, model, created_at) VALUES (?,?,?,?,?,?)")
+        .run(bookId, req.key, req.term, definition, this.cfg.chatModel, Date.now());
+      this.deps.emitGlossary({ bookId, key: req.key, definition });
+    } catch (e) {
+      if (this.deps.isModelMissing(e)) this.notesState = "no-model";
+      else if (this.deps.isOffline(e)) this.offline("notes");
+      this.deps.emitGlossary({ bookId, key: req.key, failed: true });
+    }
+  }
+
+  /** Where a term appears in other books (exact words, with word variants). */
+  mentions(phrases: string[], excludeBookId: string): BookMention[] {
+    const terms = [...new Set(phrases.map((p) => p.replace(/["*^:()]/g, " ").trim()).filter((p) => p.length > 1))].slice(0, 6);
+    if (!terms.length) return [];
+    const q = terms.map((t) => `"${t}"`).join(" OR ");
+    const rows = safe(
+      () =>
+        this.db
+          .prepare(
+            `SELECT c.book_id AS bookId, COUNT(*) AS count, MIN(c.block_index) AS first FROM chunks_fts f JOIN chunks c ON c.id = f.rowid
+             WHERE chunks_fts MATCH ? AND c.book_id != ? AND c.kind != 'refs' GROUP BY c.book_id ORDER BY count DESC LIMIT 6`,
+          )
+          .all(q, excludeBookId) as { bookId: string; count: number; first: number }[],
+    );
+    return rows.map((r) => {
+      const at = this.db.prepare("SELECT block_id FROM chunks WHERE book_id = ? AND block_index = ? LIMIT 1").get(r.bookId, r.first) as { block_id: string } | undefined;
+      const title = (this.db.prepare("SELECT title FROM books WHERE id = ?").get(r.bookId) as { title: string } | undefined)?.title ?? "";
+      return { bookId: r.bookId, title, count: r.count, blockId: at?.block_id ?? "" };
+    });
   }
 
   /** Resolves once background work has nothing left to do (used by tests). */
@@ -561,6 +632,29 @@ Section: ${s.path}
 Return JSON with:
 - "summary": one sentence of at most 22 words stating the section's main point. Do not start with "This section".
 - "concepts": the 2 to 4 most important terms or ideas, each 1 to 4 words, using the book's own wording.`,
+    },
+  ];
+}
+
+export const DEFINITION_SCHEMA = {
+  type: "object",
+  properties: { definition: { type: "string" } },
+  required: ["definition"],
+};
+
+export function definitionMessages(bookTitle: string, r: DefineRequest): { role: "system" | "user"; content: string }[] {
+  return [
+    {
+      role: "system",
+      content: "You write glossary entries for someone reading a book. Define terms in plain language, using only the book text provided. Answer in JSON.",
+    },
+    {
+      role: "user",
+      content: `Book: ${bookTitle}
+Term: ${r.term}${r.expansion ? ` (${r.expansion})` : ""}
+The book says: """${r.definition.slice(0, 1200)}"""${r.context ? `\nMore context: """${r.context.slice(0, 1800)}"""` : ""}
+
+Return JSON with "definition": one plain-language sentence of at most 25 words explaining what the term means as this book uses it. Do not start with the term itself.`,
     },
   ];
 }

@@ -2,9 +2,9 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, net, protocol, session, shel
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import type { AiConfig, ChatRequest, SearchParams } from "../shared/ipc";
+import type { AiConfig, ChatRequest, DefineRequest, SearchParams } from "../shared/ipc";
 import { EXTRACTOR_VERSION, type BookDoc } from "../shared/model";
-import { LibraryIndex, NOTE_SCHEMA, noteMessages, type NoteDraft } from "./library";
+import { DEFINITION_SCHEMA, LibraryIndex, NOTE_SCHEMA, definitionMessages, noteMessages, type NoteDraft } from "./library";
 import * as ollama from "./ollama";
 
 // One name everywhere, so settings and the book cache live in the same
@@ -128,6 +128,8 @@ function openLibrary(): LibraryIndex {
     },
     embed: (cfg, texts) => ollama.embed(cfg.baseUrl, cfg.embedModel, texts),
     writeNote: (cfg, book, section) => ollama.chatJson<NoteDraft>(cfg.baseUrl, cfg.chatModel, noteMessages(book, section), NOTE_SCHEMA),
+    writeDefinition: (cfg, title, req) => ollama.chatJson<{ definition: string }>(cfg.baseUrl, cfg.chatModel, definitionMessages(title, req), DEFINITION_SCHEMA),
+    emitGlossary: (e) => broadcast("glossary:event", e),
     userBusy: ollama.userBusy,
     emitStatus: (s) => broadcast("index:status", s),
     emitNote: (e) => broadcast("notes:event", e),
@@ -184,6 +186,9 @@ function registerIpc(): void {
   ipcMain.handle("index:book", (_e, bookId: string, title: string, blockIndex: number) => library!.indexBook(bookId, title, blockIndex));
   ipcMain.handle("search:query", (_e, p: SearchParams) => library!.search(p));
   ipcMain.handle("notes:list", (_e, bookId: string) => library!.notes(bookId));
+  ipcMain.handle("glossary:definitions", (_e, bookId: string) => library!.definitions(bookId));
+  ipcMain.handle("glossary:define", (_e, bookId: string, req: DefineRequest) => library!.requestDefinition(bookId, req));
+  ipcMain.handle("glossary:mentions", (_e, phrases: string[], exclude: string) => library!.mentions(phrases, exclude));
   ipcMain.handle("reader:position", (_e, bookId: string, blockIndex: number) => library?.setPosition(bookId, blockIndex));
 }
 

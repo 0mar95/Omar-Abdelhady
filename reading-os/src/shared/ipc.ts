@@ -35,7 +35,7 @@ export interface AiStatus {
   error?: string;
 }
 
-export interface ReadingOSApi extends LibraryApi {
+export interface ReadingOSApi extends LibraryApi, GlossaryApi {
   platform: string;
   openPdfDialog(): Promise<OpenedFile | null>;
   readFile(path: string): Promise<Uint8Array | null>;
@@ -117,4 +117,34 @@ export interface LibraryApi {
   notesList(bookId: string): Promise<MarginNote[]>;
   onNoteEvent(cb: (e: NoteEvent) => void): () => void;
   readingPosition(bookId: string, blockIndex: number): Promise<void>;
+}
+
+// ---------- Phase 3: glossary ----------
+
+export interface DefineRequest {
+  key: string;
+  term: string;
+  expansion?: string;
+  /** The book's own defining sentence. */
+  definition: string;
+  /** The paragraph around it, for extra grounding. */
+  context?: string;
+}
+
+export type GlossaryEvent = { bookId: string; key: string; definition: string } | { bookId: string; key: string; failed: true };
+
+export interface BookMention {
+  bookId: string;
+  title: string;
+  count: number;
+  /** First block mentioning the term in that book. */
+  blockId: string;
+}
+
+export interface GlossaryApi {
+  glossaryDefinitions(bookId: string): Promise<Record<string, string>>;
+  /** Returns a stored definition, or queues one and answers later via onGlossaryEvent. */
+  glossaryDefine(bookId: string, req: DefineRequest): Promise<string | null>;
+  onGlossaryEvent(cb: (e: GlossaryEvent) => void): () => void;
+  glossaryMentions(phrases: string[], excludeBookId: string): Promise<BookMention[]>;
 }

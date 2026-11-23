@@ -4,6 +4,9 @@
 import type {
   AiConfig,
   AiStatus,
+  BookMention,
+  DefineRequest,
+  GlossaryEvent,
   ChatChunk,
   ChatRequest,
   IndexStatus,
@@ -49,6 +52,10 @@ export interface Platform {
   notesList(bookId: string): Promise<MarginNote[]>;
   onNoteEvent(cb: (e: NoteEvent) => void): () => void;
   readingPosition(bookId: string, blockIndex: number): void;
+  glossaryDefinitions(bookId: string): Promise<Record<string, string>>;
+  glossaryDefine(bookId: string, req: DefineRequest): Promise<string | null>;
+  onGlossaryEvent(cb: (e: GlossaryEvent) => void): () => void;
+  glossaryMentions(phrases: string[], excludeBookId: string): Promise<BookMention[]>;
 }
 
 // ---------- Electron ----------
@@ -97,6 +104,10 @@ function electronPlatform(api: ReadingOSApi): Platform {
     notesList: (id) => api.notesList(id),
     onNoteEvent: (cb) => api.onNoteEvent(cb),
     readingPosition: (id, blockIndex) => void api.readingPosition(id, blockIndex),
+    glossaryDefinitions: (id) => api.glossaryDefinitions(id),
+    glossaryDefine: (id, req) => api.glossaryDefine(id, req),
+    onGlossaryEvent: (cb) => api.onGlossaryEvent(cb),
+    glossaryMentions: (phrases, exclude) => api.glossaryMentions(phrases, exclude),
   };
 }
 
@@ -226,6 +237,12 @@ function webPlatform(): Platform {
     notesList: async () => [],
     onNoteEvent: () => () => {},
     readingPosition: () => {},
+    // Glossary terms and the book's own definitions work everywhere; short AI
+    // definitions and other-book lookups need the desktop app's index.
+    glossaryDefinitions: async () => ({}),
+    glossaryDefine: async () => null,
+    onGlossaryEvent: () => () => {},
+    glossaryMentions: async () => [],
   };
 }
 
