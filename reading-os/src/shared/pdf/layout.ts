@@ -22,41 +22,72 @@ function isTextLike(l: Line, stats: FontStats): boolean {
   return l.size >= stats.bodySize * 0.7 && l.size <= stats.bodySize * 1.15 && l.text.length >= 15;
 }
 
-export function detectLayout(lines: Line[], stats: FontStats, pageW: number): PageLayout | null {
-  const body = lines.filter((l) => isTextLike(l, stats));
-  if (body.length < 6) return null;
+function isBodySize(l: Line, stats: FontStats): boolean {
+  return Math.abs(l.size - stats.bodySize) <= stats.bodySize * 0.12 && l.text.length >= 12;
+}
+
+function twoColumns(lines: Line[]): PageLayout | null {
+  if (lines.length < 6) return null;
   const left = percentile(
-    body.map((l) => l.x0),
+    lines.map((l) => l.x0),
     0.05,
   );
   const right = percentile(
-    body.map((l) => l.x1),
+    lines.map((l) => l.x1),
     0.95,
   );
   const mid = (left + right) / 2;
-  const L = body.filter((l) => l.x1 < mid + 3);
-  const R = body.filter((l) => l.x0 > mid - 3);
-  const span = body.length - L.length - R.length;
-  if (L.length >= 3 && R.length >= 3 && span <= 0.2 * (L.length + R.length)) {
-    const gl = percentile(
-      L.map((l) => l.x1),
-      0.9,
-    );
-    const gr = percentile(
-      R.map((l) => l.x0),
-      0.1,
-    );
-    if (gr > gl) {
-      return {
-        columns: [
-          { x0: left, x1: gl },
-          { x0: gr, x1: right },
-        ],
-        gutter: (gl + gr) / 2,
-      };
-    }
-  }
-  return { columns: [{ x0: Math.min(left, pageW), x1: right }] };
+  const L = lines.filter((l) => l.x1 < mid + 3);
+  const R = lines.filter((l) => l.x0 > mid - 3);
+  const span = lines.length - L.length - R.length;
+  if (L.length < 3 || R.length < 3 || span > 0.2 * (L.length + R.length)) return null;
+  const gl = percentile(
+    L.map((l) => l.x1),
+    0.9,
+  );
+  const gr = percentile(
+    R.map((l) => l.x0),
+    0.1,
+  );
+  if (gr <= gl) return null;
+  return {
+    columns: [
+      { x0: left, x1: gl },
+      { x0: gr, x1: right },
+    ],
+    gutter: (gl + gr) / 2,
+  };
+}
+
+/**
+ * Columns are decided by body text when the page has enough of it (captions,
+ * boxes and figure labels often span the page); otherwise by any text, which
+ * covers pages of small print such as reference lists.
+ */
+export function detectLayout(lines: Line[], stats: FontStats, pageW: number): PageLayout | null {
+  const body = lines.filter((l) => isBodySize(l, stats));
+  const text = lines.filter((l) => isTextLike(l, stats));
+  const two = (body.length >= 6 ? twoColumns(body) : null) ?? twoColumns(text);
+  if (two) return two;
+  const basis = body.length >= 6 ? body : text;
+  if (basis.length < 6) return null;
+  return {
+    columns: [
+      {
+        x0: Math.min(
+          percentile(
+            basis.map((l) => l.x0),
+            0.05,
+          ),
+          pageW,
+        ),
+        x1: percentile(
+          basis.map((l) => l.x1),
+          0.95,
+        ),
+      },
+    ],
+  };
 }
 
 /**
@@ -68,9 +99,12 @@ export function fitLayout(lines: Line[], own: PageLayout | null, dominant: PageL
   if (own && own.columns.length === 2) return own;
   if (dominant.gutter === undefined) return own ?? dominant;
   const g = dominant.gutter;
-  const text = lines.filter((l) => isTextLike(l, stats));
+  const body = lines.filter((l) => isBodySize(l, stats));
+  const text = body.length >= 4 ? body : lines.filter((l) => isTextLike(l, stats));
   if (text.length < 4) return own ?? dominant;
-  const crossing = text.filter((l) => l.x0 < g - 3 && l.x1 > g + 3).length;
+  // Lines that cross the gutter only because two columns' lines merged (with a
+  // clear gap at the gutter) don't count: they will be split.
+  const crossing = text.filter((l) => l.x0 < g - 3 && l.x1 > g + 3 && !hasGapAt(l, g)).length;
   const right = text.filter((l) => l.x0 >= g - 3).length;
   if (crossing <= text.length * 0.1 && right >= 2) return dominant;
   return own ?? dominant;
@@ -100,15 +134,25 @@ export function dominantLayout(layouts: (PageLayout | null)[], pageW: number): P
   return { columns: [{ x0: pageW * 0.1, x1: pageW * 0.9 }] };
 }
 
+/** True when the line has a gap between two runs right where the gutter is. */
+export function hasGapAt(l: Line, g: number): boolean {
+  const runs = [...l.runs].sort((a, b) => a.x - b.x);
+  for (let i = 1; i < runs.length; i++) {
+    const end = runs[i - 1].x + runs[i - 1].w;
+    if (end <= g + 4 && runs[i].x >= g - 4 && runs[i].x - end > l.size * 0.4) return true;
+  }
+  return false;
+}
+
 /** Splits lines that cross the gutter at a gap (two columns that happened to merge). */
 export function splitAtGutter(lines: Line[], layout: PageLayout, rebuild: (runs: Line["runs"], from: Line) => Line): Line[] {
   if (layout.gutter === undefined) return lines;
   const g = layout.gutter;
   const out: Line[] = [];
   for (const l of lines) {
-    if (l.x0 < g && l.x1 > g && l.runs.length > 1) {
-      const leftRuns = l.runs.filter((r) => r.x + r.w <= g + 1);
-      const rightRuns = l.runs.filter((r) => r.x >= g - 1);
+    if (l.x0 < g && l.x1 > g && l.runs.length > 1 && hasGapAt(l, g)) {
+      const leftRuns = l.runs.filter((r) => r.x + r.w <= g + 4);
+      const rightRuns = l.runs.filter((r) => r.x + r.w > g + 4);
       if (leftRuns.length && rightRuns.length && leftRuns.length + rightRuns.length === l.runs.length) {
         out.push(rebuild(leftRuns, l), rebuild(rightRuns, l));
         continue;

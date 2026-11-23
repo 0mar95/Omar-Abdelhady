@@ -7,15 +7,16 @@
   "type": "module",
   "main": "out/main/index.js",
   "scripts": {
+    "postinstall": "node scripts/copy-pdfjs-assets.mjs",
     "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "build": "node scripts/copy-pdfjs-assets.mjs && electron-vite build",
     "preview": "electron-vite preview",
-    "web": "vite --config vite.web.config.ts",
+    "web": "node scripts/copy-pdfjs-assets.mjs && vite --config vite.web.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "extract": "node --experimental-strip-types scripts/extract.ts",
-    "dist:mac": "electron-vite build && electron-builder --mac",
-    "dist:win": "electron-vite build && electron-builder --win"
+    "extract": "node --experimental-strip-types --no-warnings scripts/extract.ts",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:win": "npm run build && electron-builder --win"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
@@ -41,5 +42,34 @@
     "typescript": "^7.0.2",
     "vite": "^8.3.8",
     "vitest": "^5.1.1"
+  },
+  "build": {
+    "appId": "app.readingos.desktop",
+    "productName": "Reading OS",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.education",
+      "target": [
+        "dmg"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "fileAssociations": [
+      {
+        "ext": "pdf",
+        "name": "PDF document",
+        "role": "Viewer"
+      }
+    ]
   }
 }

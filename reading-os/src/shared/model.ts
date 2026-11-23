@@ -3,7 +3,7 @@
 // the page and rectangle it came from so the original page can always be shown.
 
 /** Bump whenever extraction output changes so cached books are re-extracted. */
-export const EXTRACTOR_VERSION = 1;
+export const EXTRACTOR_VERSION = 5;
 
 /** Rectangle in PDF points, origin at the top-left of the page. */
 export interface Rect {
@@ -19,6 +19,8 @@ export interface Span {
   b?: boolean;
   /** Superscript that is not a citation (e.g. exponents, footnote marks). */
   sup?: boolean;
+  /** Subscript (e.g. "5-HT1B/1D", chemical formulas). */
+  sub?: boolean;
   /** Citation numbers pointing into the chapter's reference list. */
   cite?: number[];
   /** Cross-reference to a figure, table or box key, e.g. "Fig 1-1". */

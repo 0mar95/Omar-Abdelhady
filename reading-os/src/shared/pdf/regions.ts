@@ -121,7 +121,8 @@ export function findRegions(page: PageForRegions, layout: PageLayout, stats: Fon
       for (const l of lines) {
         if (used.has(l) || captionLineSet.has(l)) continue;
         const lr = lineRect(l);
-        if (contains(background, lr, 2)) {
+        const cy = (lr.y0 + lr.y1) / 2;
+        if (contains(background, { ...lr, y0: cy, y1: cy }, 2)) {
           content.push(l);
           continue;
         }
@@ -153,7 +154,7 @@ export function findRegions(page: PageForRegions, layout: PageLayout, stats: Fon
   // Figures: find the drawing or image nearest to each caption.
   const inTables = (g: Rect) => regions.some((r) => contains(r.rect, g, 2));
   const candidates = page.graphics.filter(
-    (g) => (g.kind === "image" ? area(g) < pageArea * 0.85 : area(g) < pageArea * 0.45) && !inTables(g),
+    (g) => area(g) < pageArea * 0.85 && !inTables(g),
   );
   const clusters = cluster(candidates, 6).filter((r) => r.x1 - r.x0 > 12 && r.y1 - r.y0 > 12);
   const takenClusters = new Set<Rect>();
@@ -211,7 +212,9 @@ export function findRegions(page: PageForRegions, layout: PageLayout, stats: Fon
   }
 
   // Large images without a caption, unless text is printed over them (backgrounds).
-  for (const cl of clusters) {
+  // Chapter-opener pages (very large type) only carry decoration.
+  const opener = lines.some((l) => l.size >= stats.bodySize * 2.2);
+  for (const cl of opener ? [] : clusters) {
     if (takenClusters.has(cl) || area(cl) < pageArea * 0.06) continue;
     // Artwork bleeding off the page edge is decoration (chapter openers, banners).
     const edges = [cl.x0 <= 2, cl.y0 <= 2, cl.x1 >= page.w - 2, cl.y1 >= page.h - 2].filter(Boolean).length;
@@ -255,7 +258,8 @@ function findBackground(page: PageForRegions, caption: Rect): Rect | undefined {
   while (grew) {
     grew = false;
     for (const g of fills) {
-      const stacked = Math.abs(g.y0 - bg.y1) < 3 && Math.abs(g.x0 - bg.x0) < 4 && Math.abs(g.x1 - bg.x1) < 4 && g.y1 > bg.y1 + 1;
+      // Shapes directly below (touching or overlapping) with the same width.
+      const stacked = g.y0 <= bg.y1 + 3 && g.y0 >= bg.y0 - 1 && Math.abs(g.x0 - bg.x0) < 4 && Math.abs(g.x1 - bg.x1) < 4 && g.y1 > bg.y1 + 1;
       if (stacked) {
         bg = union(bg, g);
         grew = true;

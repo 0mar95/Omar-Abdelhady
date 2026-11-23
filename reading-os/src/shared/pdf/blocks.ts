@@ -77,14 +77,17 @@ export class BlockBuilder {
   private book: WordBook;
   private headings: HeadingStyles;
 
-  constructor(stats: FontStats, book: WordBook, headings: HeadingStyles) {
+  private idPrefix: string;
+
+  constructor(stats: FontStats, book: WordBook, headings: HeadingStyles, idPrefix = "b") {
     this.stats = stats;
     this.book = book;
     this.headings = headings;
+    this.idPrefix = idPrefix;
   }
 
   private id(): string {
-    return `b${this.nextId++}`;
+    return `${this.idPrefix}${this.nextId++}`;
   }
 
   process(item: Item): void {
@@ -153,7 +156,8 @@ export class BlockBuilder {
       return;
     }
     // Box: its contents are ordinary paragraphs and lists.
-    const inner = new BlockBuilder(this.stats, this.book, { levelOf: () => null });
+    // Inner blocks get ids under a fresh prefix so continued boxes never collide.
+    const inner = new BlockBuilder(this.stats, this.book, { levelOf: () => null }, `${this.id()}.`);
     const xs = r.contentLines.map((l) => l.x0);
     const col: Column = { x0: xs.length ? Math.min(...xs) : r.rect.x0, x1: r.rect.x1 };
     const ordered = readingOrder(
@@ -262,12 +266,31 @@ export class BlockBuilder {
     c.rect = union(c.rect, lineRect(l));
   }
 
+  private footnotes: ParagraphBlock[] = [];
+
   private onBodyLine(l: Line, col: Column): void {
     const bullet = BULLET_RE.exec(l.text);
     const small = l.size < this.stats.bodySize * 0.9;
 
+    // Footnotes at the foot of a page interrupt a running paragraph; set them
+    // aside and show them after the paragraph instead of splitting it.
+    const p0 = this.para;
+    if (small && p0 && !p0.small && !SENTENCE_END_RE.test(p0.last.text.trim()) && l.top > p0.last.bottom && l.page === p0.last.page) {
+      const last = this.footnotes[this.footnotes.length - 1];
+      if (last && last.page === l.page && !/^[*†‡§¶]/.test(l.text.trim())) appendSpans(last.spans, l.spans, this.book);
+      else this.footnotes.push({ kind: "paragraph", id: this.id(), page: l.page, rect: lineRect(l), chapter: 0, spans: [...l.spans], small: true });
+      return;
+    }
+
     // Lists: a marker starts an item; indented lines continue it.
-    if (bullet && !(this.para && bullet[1].match(/^\d/) && !SENTENCE_END_RE.test(this.para.last.text.trim()))) {
+    // "2." at the start of a line is a list item, unless it is the middle of a
+    // running sentence ("…shown in Fig\n2. …"): previous line full and unfinished.
+    const midSentence =
+      !!this.para &&
+      /^\(?\d/.test(bullet?.[1] ?? "") &&
+      !SENTENCE_END_RE.test(this.para.last.text.trim()) &&
+      this.para.lastCol.x1 - this.para.last.x1 < this.para.last.size * 2;
+    if (bullet && !midSentence) {
       this.flushPara();
       const ordered = /\d|[a-z]/.test(bullet[1]);
       if (!this.list || this.list.ordered !== ordered) {
@@ -337,6 +360,8 @@ export class BlockBuilder {
     const spans = trimSpans(p.spans);
     if (spans.length)
       this.blocks.push({ kind: "paragraph", id: this.id(), page: p.page, rect: p.rect, chapter: 0, spans, small: p.small || undefined });
+    this.blocks.push(...this.footnotes);
+    this.footnotes = [];
     const pending = this.pending;
     this.pending = [];
     for (const r of pending) this.emitRegion(r);

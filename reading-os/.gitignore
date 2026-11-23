@@ -10,3 +10,4 @@ release/
 *.mobi
 test-books/
 .extract/
+src/renderer/public/pdfjs/

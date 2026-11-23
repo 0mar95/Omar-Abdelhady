@@ -271,6 +271,16 @@ function buildToc(blocks: Block[]): TocEntry[] {
 }
 
 function guessTitle(blocks: Block[], fileName: string): string {
+  // The biggest heading on the title page, with its subtitle when there is one.
+  const firstChapter = blocks.findIndex((b) => b.kind === "heading" && b.level === 1 && b.number);
+  const front = blocks.slice(0, firstChapter < 0 ? 40 : firstChapter).filter((b) => b.page < 12);
+  const h1 = front.findIndex((b) => b.kind === "heading" && b.level === 1);
+  if (h1 >= 0) {
+    const t = (front[h1] as { text: string }).text;
+    const next = front[h1 + 1];
+    const sub = next && next.kind === "heading" && next.level === 2 && next.page === front[h1].page ? next.text : "";
+    if (t.length <= 80) return sub && `${t}: ${sub}`.length <= 110 ? `${t}: ${sub}` : t;
+  }
   const base = fileName
     .replace(/\.[a-z0-9]+$/i, "")
     .replace(/^[0-9a-f]{6,}[-_]/i, "")

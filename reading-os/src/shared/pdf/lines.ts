@@ -113,8 +113,9 @@ export function buildLines(page: RawPage, stats: FontStats): Line[] {
       dropCaps.push(r);
       continue;
     }
-    // Runs much smaller than body text may be superscripts; attach them later.
-    if (r.size < stats.bodySize * 0.8) {
+    // Runs much smaller than body text may be superscripts or subscripts
+    // ("5-HT1B/1D"); attach them to their line later.
+    if (r.size < stats.bodySize * 0.8 || (r.size < stats.bodySize * 0.9 && t.length <= 8)) {
       small.push(r);
       continue;
     }
@@ -138,7 +139,8 @@ export function buildLines(page: RawPage, stats: FontStats): Line[] {
     let bestScore = Infinity;
     for (const row of rows) {
       const dy = row.y - r.y; // positive when the run is above the baseline
-      if (dy < -0.35 * row.size || dy > 0.75 * row.size) continue;
+      if (dy < -0.4 * row.size || dy > 0.75 * row.size) continue;
+      if (Math.abs(dy) > 0.5 && row.size < r.size * 1.1) continue; // not smaller than its neighbours
       const near = row.runs.some((o) => r.x >= o.x - row.size && r.x <= o.x + o.w + row.size * 0.6);
       if (!near) continue;
       const score = Math.abs(dy);
@@ -174,7 +176,8 @@ export function buildLines(page: RawPage, stats: FontStats): Line[] {
     let end = -Infinity;
     for (const r of sorted) {
       // Skip duplicated runs (fake bold drawn twice).
-      if (current.some((o) => o.str === r.str && Math.abs(o.x - r.x) < 0.6 && Math.abs(o.y - r.y) < 0.6)) continue;
+      // Skip text drawn twice for a bold or shadow effect.
+      if (current.some((o) => o.str === r.str && Math.abs(o.x - r.x) < Math.max(1.5, r.size * 0.2) && Math.abs(o.y - r.y) < 1.5)) continue;
       const gap = r.x - end;
       const afterBullet = current.length === 1 && BULLET_GLYPH.test(current[0].str.trim()) && gap < row.size * 3;
       if (current.length && !afterBullet && gap > SPLIT_GAP_EM * Math.max(row.size, r.size)) {
@@ -215,8 +218,15 @@ function makeLine(page: number, runs: Run[], row: Row): Line {
     bySize.set(s, (bySize.get(s) ?? 0) + r.str.length);
     byFont.set(r.font, (byFont.get(r.font) ?? 0) + r.str.length);
   }
-  const size = [...bySize.entries()].sort((a, b) => b[1] - a[1])[0][0];
-  const font = [...byFont.entries()].sort((a, b) => b[1] - a[1])[0][0];
+  // The line's size is that of its main text: the largest size carrying a few
+  // characters. Small caps lead-ins ("MANAGEMENT.") and citation digits are
+  // smaller and must not make a body line look like small print.
+  const textual = [...bySize.entries()].filter(([, n]) => n >= 4).map(([sz]) => sz);
+  const size = textual.length ? Math.max(...textual) : [...bySize.entries()].sort((a, b) => b[1] - a[1])[0][0];
+  // Likewise the font is that of the main-size text, not of a run-in heading.
+  const mainFont = new Map<string, number>();
+  for (const r of runs) if (r.size >= size * 0.9) mainFont.set(r.font, (mainFont.get(r.font) ?? 0) + r.str.length);
+  const font = [...(mainFont.size ? mainFont : byFont).entries()].sort((a, b) => b[1] - a[1])[0][0];
   const baseRuns = runs.filter((r) => r.size >= size * 0.8);
   const baseline = baseRuns.length ? median(baseRuns.map((r) => r.y)) : row.y;
 
@@ -224,8 +234,9 @@ function makeLine(page: number, runs: Run[], row: Row): Line {
   let prevEnd = -Infinity;
   let prevSize = size;
   for (const r of runs) {
-    const isSmall = r.size < size * 0.82;
+    const isSmall = r.size < size * 0.9;
     const raised = baseline - r.y > 0.12 * size;
+    const lowered = r.y - baseline > 0.1 * size;
     let text = normalizeText(r.str);
     const gap = r.x - prevEnd;
     const needsSpace = spans.length > 0 && gap > 0.12 * Math.min(prevSize, r.size);
@@ -240,10 +251,11 @@ function makeLine(page: number, runs: Run[], row: Row): Line {
       if (cites) span.cite = cites;
       else span.sup = true;
     } else {
+      if (isSmall && lowered) span.sub = true;
       if (r.italic) span.i = true;
       if (r.bold) span.b = true;
     }
-    if (span.cite || span.sup) {
+    if (span.cite || span.sup || span.sub) {
       const lead = /^\s*/.exec(span.text)![0];
       const trail = /\s*$/.exec(span.text)![0];
       if (lead) pushSpan(spans, { text: lead });
@@ -294,7 +306,8 @@ export function pushSpan(spans: Span[], span: Span): void {
     span.pageRef === undefined &&
     !!last.i === !!span.i &&
     !!last.b === !!span.b &&
-    !!last.sup === !!span.sup
+    !!last.sup === !!span.sup &&
+    !!last.sub === !!span.sub
   ) {
     last.text += span.text;
     return;
