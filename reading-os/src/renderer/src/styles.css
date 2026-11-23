@@ -478,12 +478,6 @@ button {
 .textLayer.selecting .endOfContent {
   top: 0;
 }
-.page-canvas-dark {
-  filter: invert(0.9) hue-rotate(180deg) contrast(0.92);
-}
-.page-canvas-sepia {
-  filter: sepia(0.35) brightness(0.97);
-}
 
 .scroll-quiet {
   scrollbar-width: thin;

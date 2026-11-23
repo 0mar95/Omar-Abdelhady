@@ -53,7 +53,8 @@ Build an installer with `npm run dist:mac` or `npm run dist:win`.
   line length, justification and book-style indents.
 
 **Page view** — the original pages, with selectable text (**V** to toggle;
-your place is kept).
+your place is kept). Sepia and dark themes recolor the page and its text and
+diagrams, but photos and illustrations keep their real colors.
 
 **Inline AI** — select text and choose **Explain**, **Simplify**,
 **Summarize**, **Key terms** or **Ask…**. The answer streams into a card right
