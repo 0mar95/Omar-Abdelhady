@@ -3,7 +3,7 @@
 // the page and rectangle it came from so the original page can always be shown.
 
 /** Bump whenever extraction output changes so cached books are re-extracted. */
-export const EXTRACTOR_VERSION = 6;
+export const EXTRACTOR_VERSION = 7;
 
 /** Rectangle in PDF points, origin at the top-left of the page. */
 export interface Rect {
@@ -66,6 +66,11 @@ export interface FigureBlock extends BlockBase {
   caption: Span[];
   /** Text found inside the figure (diagram labels), kept for search and AI. */
   labels?: string;
+  /**
+   * For books that aren't PDFs: the image itself, as a path inside the book's
+   * archive (EPUB) or a data:/https: URL. PDF figures are cropped from the page.
+   */
+  image?: string;
 }
 
 export interface TablePart {
@@ -180,8 +185,12 @@ export interface BookStats {
   ms: number;
 }
 
+export type BookFormat = "pdf" | "epub" | "docx" | "html" | "markdown" | "text";
+
 export interface BookDoc {
   version: number;
+  /** Absent in books extracted before other formats existed: those are PDFs. */
+  format?: BookFormat;
   id: string;
   title: string;
   author?: string;

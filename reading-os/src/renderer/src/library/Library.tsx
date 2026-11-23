@@ -34,14 +34,14 @@ export function Library({ onOpenFile }: { onOpenFile(): void }) {
         <div className="flex flex-wrap items-end justify-between gap-6">
           <div>
             <h1 className="m-0 text-[28px] font-semibold tracking-tight">Library</h1>
-            <p className="mb-0 mt-1 text-[14px] text-ink-3">PDFs become clean, comfortable books — with an AI reading companion that stays on your computer.</p>
+            <p className="mb-0 mt-1 text-[14px] text-ink-3">PDFs, EPUBs and documents become clean, comfortable books — with an AI reading companion that stays on your computer.</p>
           </div>
           <button
             type="button"
             onClick={onOpenFile}
             className="flex items-center gap-2 rounded-xl bg-[var(--accent)] px-4 py-2.5 text-[14px] font-medium text-white shadow-sm hover:brightness-110"
           >
-            <IconOpen size={17} /> Open PDF
+            <IconOpen size={17} /> Open a book
           </button>
         </div>
 
@@ -54,8 +54,8 @@ export function Library({ onOpenFile }: { onOpenFile(): void }) {
             className="mt-10 flex h-72 w-full flex-col items-center justify-center gap-3 rounded-3xl border-2 border-dashed border-rule text-ink-3 hover:border-[var(--accent)] hover:text-ink-2"
           >
             <IconOpen size={30} />
-            <span className="text-[16px] font-medium text-ink-2">Drop a PDF here, or click to choose one</span>
-            <span className="max-w-md text-[13px]">Text, headings, figures, tables and references are rebuilt into a reflowable book. Nothing leaves your computer.</span>
+            <span className="text-[16px] font-medium text-ink-2">Drop a book here, or click to choose one</span>
+            <span className="max-w-md text-[13px]">PDF, EPUB, Word (.docx), HTML, Markdown or plain text. PDFs are rebuilt into a reflowable book — text, headings, figures, tables and references. Nothing leaves your computer.</span>
           </button>
         ) : (
           <div className="mt-10 grid gap-5 [grid-template-columns:repeat(auto-fill,minmax(220px,1fr))]">
@@ -81,7 +81,7 @@ function BookCard({ e, onOpen, onRemove }: { e: LibraryEntry; onOpen(): void; on
         <div className="mb-4 flex aspect-[3/4] w-full flex-col justify-end rounded-lg bg-gradient-to-br from-[var(--accent-soft)] to-[var(--paper-2)] p-4">
           <div className="font-serif text-[19px] font-semibold leading-tight text-ink [font-family:var(--reader-font,'Literata_Variable',serif)]">{e.title}</div>
           <div className="mt-2 text-[11px] text-ink-3">
-            {e.pageCount} pages · {e.chapters} chapters
+            {!e.format || e.format === "pdf" ? `${e.pageCount} pages` : `${FORMAT_NAMES[e.format]} · ${Math.max(1, Math.round(e.words / 250 / 60))} h read`} · {e.chapters} chapters
           </div>
         </div>
         <div className="mt-auto">
@@ -121,3 +121,5 @@ function AiChip({ state, model }: { state: "checking" | "ready" | "missing-model
     </div>
   );
 }
+
+const FORMAT_NAMES: Record<string, string> = { epub: "EPUB", docx: "Word", html: "Web page", markdown: "Markdown", text: "Text", pdf: "PDF" };

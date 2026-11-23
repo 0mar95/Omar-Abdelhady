@@ -27,9 +27,10 @@ computer. No chat side panel: help appears inside the text, where you need it.
    The first `npm run dev` also downloads Electron itself (about 100 MB,
    one time only): Electron 45+ no longer fetches it during `npm install`.
 
-4. Click **Open PDF** (or drop a PDF on the window). The first open of a book
-   takes a few seconds (≈8 s for a 370-page textbook); after that it opens
-   instantly from the cache.
+4. Click **Open a book** (or drop a file on the window): PDF, EPUB, Word
+   (.docx), HTML, Markdown or plain text. The first open of a PDF takes a few
+   seconds (≈8 s for a 370-page textbook); other formats take well under a
+   second; after that every book opens instantly from the cache.
 
 Build an installer with `npm run dist:mac` or `npm run dist:win`.
 
@@ -51,6 +52,16 @@ Build an installer with `npm run dist:mac` or `npm run dist:win`.
 - The original page numbers sit quietly in the margin; click one to see that page.
 - Themes (light, sepia, dark, black), five reading fonts, size, line spacing,
   line length, justification and book-style indents.
+
+**Other formats** — EPUB, Word (.docx), HTML, Markdown and plain text become
+the same kind of book as a PDF, so everything below works on them too:
+search, Ask, the glossary, margin notes and the inline AI. EPUB chapters follow
+the book's own table of contents, and its images, tables and sidebars are kept;
+Word headings, lists, tables and pictures come across; plain text has its
+wrapped lines joined and "CHAPTER IV"-style headings found (Project
+Gutenberg's license header and footer are left out). Only the original-pages
+view is PDF-only. Copy-protected (DRM) books can't be opened, and images are
+never fetched from the web.
 
 **Page view** — the original pages, with selectable text (**V** to toggle;
 your place is kept). Sepia and dark themes recolor the page and its text and
@@ -167,7 +178,7 @@ everything except AI features works.
 Try the extractor on any PDF without the app:
 
 ```sh
-npm run extract -- path/to/book.pdf   # writes .extract/book.json and preview.html
+npm run extract -- path/to/book.pdf   # or .epub, .docx, .md, .txt; writes .extract/book.json and preview.html
 ```
 
 ## Project layout
@@ -189,6 +200,7 @@ reading-os/
    │  ├─ model.ts              the book format (blocks, chapters, TOC)
    │  ├─ ipc.ts                main ↔ renderer contract
    │  ├─ pdf/                  the extraction pipeline (+ tests)
+   │  ├─ formats/              EPUB, Word, HTML, Markdown and text → the same book format
    │  ├─ glossary/extract.ts   glossary terms, definitions, mention matching
    │  └─ search/chunks.ts      chunking, note sections, query building, fusion
    └─ renderer/src/
@@ -217,9 +229,9 @@ npm run typecheck
 
 - Done: reflowed reader, inline AI, hybrid search across the library, cited
   answers with a reading-position limit, margin notes, glossary with hover
-  definitions and cross-book mentions.
+  definitions and cross-book mentions; EPUB, Word, HTML, Markdown and text.
 - Next: section recaps and "catch me up" when reopening a book.
 - Figure descriptions with a vision model, so figures are searchable.
-- OCR for scanned PDFs (`glm-ocr`), then EPUB, Markdown, TXT and MOBI.
+- OCR for scanned PDFs (`glm-ocr`), and older Kindle files (MOBI/AZW3).
 
 Books you open are never committed to this repository (`*.pdf` is ignored).

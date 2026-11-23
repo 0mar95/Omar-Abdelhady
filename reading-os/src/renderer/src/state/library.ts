@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { BookFormat } from "../../../shared/model";
 import { platform } from "../platform";
 
 export interface LibraryEntry {
@@ -7,6 +8,8 @@ export interface LibraryEntry {
   fileName: string;
   path?: string;
   pageCount: number;
+  /** Absent for books added before other formats were supported (PDFs). */
+  format?: BookFormat;
   words: number;
   chapters: number;
   addedAt: number;

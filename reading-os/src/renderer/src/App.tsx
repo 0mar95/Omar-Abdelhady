@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { BOOK_EXTENSIONS } from "../../shared/formats";
 import { CommandPalette } from "./command/CommandPalette";
 import { Library } from "./library/Library";
 import { platform } from "./platform";
@@ -65,7 +66,7 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [openFile]);
 
-  // Drop a PDF anywhere to open it.
+  // Drop a book anywhere to open it.
   useEffect(() => {
     const over = (e: DragEvent) => {
       if (!e.dataTransfer?.types.includes("Files")) return;
@@ -78,7 +79,7 @@ export function App() {
     const drop = async (e: DragEvent) => {
       e.preventDefault();
       setDragging(false);
-      const f = [...(e.dataTransfer?.files ?? [])].find((x) => x.name.toLowerCase().endsWith(".pdf"));
+      const f = [...(e.dataTransfer?.files ?? [])].find((x) => BOOK_EXTENSIONS.includes(x.name.toLowerCase().split(".").pop() ?? ""));
       if (f) await useReader.getState().openFile(await platform.fileFromDrop(f));
     };
     window.addEventListener("dragover", over);

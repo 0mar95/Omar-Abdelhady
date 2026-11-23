@@ -7,9 +7,9 @@ import type { Block } from "../../../shared/model";
 import { platform } from "../platform";
 import { useGlossary } from "../state/glossary";
 import { useLibrary } from "../state/library";
-import { blockAt, useReader } from "../state/reader";
+import { blockAt, pageText, useReader } from "../state/reader";
 import { IconSearch, IconSparkle } from "../ui/icons";
-import { PageCrop, Spans } from "./BlockView";
+import { FigureImage, Spans } from "./BlockView";
 
 type Target =
   | { kind: "cite"; rect: DOMRect; chapter: number; nums: number[] }
@@ -167,12 +167,14 @@ function XrefCard({ refKey }: { refKey: string }) {
     <div>
       <div className="mb-2 flex items-baseline gap-2">
         <span className="font-semibold text-accent">{refKey}</span>
-        <span className="text-[11px] text-ink-3">page {book.pages[b.page]?.label} · click the link to go there</span>
+        <span className="text-[11px] text-ink-3">
+          {book.pages[b.page]?.label ? `page ${book.pages[b.page].label} · ` : ""}click the link to go there
+        </span>
       </div>
       {b.kind === "figure" && (
         <>
           <div className="rounded-md bg-[var(--figure-bg)] p-1.5">
-            <PageCrop page={b.page} rect={b.rect} alt={refKey} maxWidth={400} className="mx-auto" />
+            <FigureImage b={b} maxWidth={400} />
           </div>
           <p className="mb-0 mt-2 text-ink-2">
             <Spans spans={b.caption} chapter={b.chapter} />
@@ -278,7 +280,7 @@ function TermCard({ termKey, onDone }: { termKey: string; onDone(): void }) {
       </blockquote>
       <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
         <button type="button" onClick={() => go(t.blockId)} className="text-link hover:underline">
-          Defined on page {book.pages[t.page]?.label}
+          {pageText(book, t.page) ? `Defined on ${pageText(book, t.page)}` : "Where it's defined"}
         </button>
         {t.occurrences.length > 1 && next !== undefined && (
           <button type="button" onClick={() => go(book.blocks[next].id)} className="text-link hover:underline">

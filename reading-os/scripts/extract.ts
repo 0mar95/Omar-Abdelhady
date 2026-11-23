@@ -1,11 +1,13 @@
-// Command-line extractor: runs the same pipeline as the app on a PDF and writes
-// the structured book (JSON) plus a quick HTML preview to .extract/.
+// Command-line extractor: runs the same pipeline as the app on a PDF (or an
+// EPUB, Word, HTML, Markdown or text file) and writes the structured book
+// (JSON) plus a quick HTML preview to .extract/.
 //   npm run extract -- path/to/book.pdf
 
 import fs from "node:fs";
 import path from "node:path";
 import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
-import { blockText, type Block, type Span } from "../src/shared/model.ts";
+import { convertBook, detectFormat } from "../src/shared/formats/index.ts";
+import { blockText, type Block, type BookDoc, type Span } from "../src/shared/model.ts";
 import { bookIdFor, extractFromDocument } from "../src/shared/pdf/extract.ts";
 
 const file = process.argv[2];
@@ -15,10 +17,27 @@ if (!file) {
 }
 const bytes = new Uint8Array(fs.readFileSync(file));
 const id = await bookIdFor(bytes);
-const doc = await pdfjs.getDocument({ data: bytes.slice(), verbosity: 0, disableFontFace: true, useSystemFonts: false, fontExtraProperties: true }).promise;
-const book = await extractFromDocument(doc, pdfjs, { id, fileName: path.basename(file) }, (p) => {
-  if (p.phase === "reading" && p.done % 40 === 0) process.stderr.write(`  read ${p.done}/${p.total}\n`);
-});
+let book: BookDoc;
+if (detectFormat(bytes, file) === "pdf") {
+  const doc = await pdfjs.getDocument({ data: bytes.slice(), verbosity: 0, disableFontFace: true, useSystemFonts: false, fontExtraProperties: true }).promise;
+  book = await extractFromDocument(doc, pdfjs, { id, fileName: path.basename(file) }, (p) => {
+    if (p.phase === "reading" && p.done % 40 === 0) process.stderr.write(`  read ${p.done}/${p.total}\n`);
+  });
+} else {
+  // EPUB, Word, HTML, Markdown, text — the same converters the app uses.
+  const { DOMParser } = await import("linkedom");
+  const mammoth = await import("mammoth");
+  const { marked } = await import("marked");
+  ({ book } = await convertBook(
+    bytes,
+    { id, fileName: path.basename(file) },
+    {
+      parse: (s, type) => new DOMParser().parseFromString(s, type === "application/xhtml+xml" ? "text/html" : type) as unknown as Document,
+      docxToHtml: async (b) => (await mammoth.convertToHtml({ buffer: Buffer.from(b) })).value,
+      markdownToHtml: (md) => marked.parse(md, { async: false }) as string,
+    },
+  ));
+}
 const outDir = path.resolve(".extract");
 fs.mkdirSync(outDir, { recursive: true });
 fs.writeFileSync(path.join(outDir, "book.json"), JSON.stringify(book));
@@ -47,6 +66,7 @@ const render = (b: Block): string => {
     case "list":
       return `<${b.ordered ? "ol" : "ul"}>${pg}${b.items.map((i) => `<li>${spans(i)}</li>`).join("")}</${b.ordered ? "ol" : "ul"}>`;
     case "figure":
+      if (b.image) return `<figure>${pg}<div class=img>[image ${esc(b.image.slice(0, 80))}]</div><figcaption><b>${b.key ?? ""}</b> ${spans(b.caption)}</figcaption></figure>`;
       return `<figure>${pg}<div class=img>[figure ${b.key ?? "(uncaptioned)"} · crop ${Object.values(b.rect).map((n) => n.toFixed(0)).join(",")}]<br><small>${esc(b.labels ?? "")}</small></div><figcaption><b>${b.key ?? ""}</b> ${spans(b.caption)}</figcaption></figure>`;
     case "table":
       return `<div class=tbl>${pg}<b>${b.key}</b> ${spans(b.caption)} <small>(${b.parts.length} part(s))</small><table>${b.rows

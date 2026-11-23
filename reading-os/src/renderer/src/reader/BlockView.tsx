@@ -6,6 +6,7 @@ import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "reac
 import { create } from "zustand";
 import type { Block, BookDoc, BoxBlock, ContentsBlock, ContentsEntry, FigureBlock, Span, TableBlock } from "../../../shared/model";
 import type { TermMatch } from "../../../shared/glossary/extract";
+import { imageUrl } from "../formats";
 import { renderRegion } from "../pdf";
 import { useGlossary } from "../state/glossary";
 import { useReader, type BookIndex } from "../state/reader";
@@ -96,6 +97,33 @@ export function Spans({ spans, chapter, seen }: { spans: Span[]; chapter: number
   );
 }
 
+/** A figure's own image (EPUB, Word): loaded lazily, shown at its natural size or the column width. */
+export function BookImage({ image, alt, className, maxWidth }: { image: string; alt: string; className?: string; maxWidth?: number }) {
+  const src = imageUrl(image);
+  if (!src) return null;
+  return (
+    <img
+      src={src}
+      alt={alt}
+      loading="lazy"
+      decoding="async"
+      draggable={false}
+      className={`block h-auto max-w-full rounded-[3px] ${className ?? ""}`}
+      style={maxWidth ? { maxWidth } : undefined}
+    />
+  );
+}
+
+/** A figure image from either source: the book's own image, or a crop of the PDF page. */
+export function FigureImage({ b, maxWidth, className }: { b: FigureBlock; maxWidth?: number; className?: string }) {
+  const alt = b.labels ?? b.key ?? "Figure";
+  return b.image ? (
+    <BookImage image={b.image} alt={alt} maxWidth={maxWidth} className={`mx-auto ${className ?? ""}`} />
+  ) : (
+    <PageCrop page={b.page} rect={b.rect} alt={alt} maxWidth={maxWidth} className={className ?? "mx-auto"} />
+  );
+}
+
 /** Renders a region of the original page as an image, only once it scrolls near. */
 export function PageCrop({
   page,
@@ -157,10 +185,10 @@ function Figure({ b }: { b: FigureBlock }) {
       <button
         type="button"
         className="w-full cursor-zoom-in rounded-md bg-[var(--figure-bg)] p-2 shadow-[0_0_0_1px_var(--rule)]"
-        onClick={() => setZoom({ page: b.page, rect: b.rect, title: b.key ?? "Figure" })}
+        onClick={() => setZoom({ page: b.page, rect: b.rect, title: b.key ?? "Figure", image: b.image })}
         aria-label={`Enlarge ${b.key ?? "figure"}`}
       >
-        <PageCrop page={b.page} rect={b.rect} alt={b.labels ?? b.key ?? "Figure"} className="mx-auto" />
+        <FigureImage b={b} />
       </button>
       {(b.key || b.caption.length > 0) && (
         <figcaption className="mt-3 w-full font-ui text-[0.8em] leading-snug text-ink-2">
@@ -191,7 +219,7 @@ function Table({ b }: { b: TableBlock }) {
         <span className="text-ink-2">
           <Spans spans={b.caption} chapter={b.chapter} />
         </span>
-        {b.rows.length > 0 && (
+        {b.rows.length > 0 && b.parts.length > 0 && (
           <button
             type="button"
             onClick={() => setOriginal((v) => !v)}
@@ -433,7 +461,8 @@ export const BlockView = memo(function BlockView({ b, pageLabel, flow }: { b: Bl
 });
 
 // Figure zoom state lives here so figures can open it without prop drilling.
+type ZoomTarget = { page: number; rect: Block["rect"]; title: string; image?: string };
 export const useZoom = create<{
-  target: { page: number; rect: Block["rect"]; title: string } | null;
-  set(t: { page: number; rect: Block["rect"]; title: string } | null): void;
+  target: ZoomTarget | null;
+  set(t: ZoomTarget | null): void;
 }>((set) => ({ target: null, set: (target) => set({ target }) }));

@@ -10,7 +10,7 @@ import type { ChatHandle } from "../platform";
 import { askBooks, searchBooks } from "../search";
 import { useGlossary } from "../state/glossary";
 import { useLibrary } from "../state/library";
-import { useReader } from "../state/reader";
+import { pageText, useReader } from "../state/reader";
 import { useSettings, type Theme } from "../state/settings";
 import { IconBook, IconChevron, IconCopy, IconImage, IconList, IconPage, IconSearch, IconSparkle, IconToc, IconType } from "../ui/icons";
 import { Markdown } from "../ui/markdown";
@@ -138,7 +138,7 @@ export function CommandPalette({ onOpenFile, onLibrary }: { onOpenFile(): void; 
     const terms = query.split(/\s+/).filter(Boolean);
     const out: Item[] = [];
     const commands: Item[] = [
-      { id: "c-open", group: "Commands", title: "Open a PDF…", icon: <IconPage />, run: onOpenFile },
+      { id: "c-open", group: "Commands", title: "Open a book…", icon: <IconPage />, run: onOpenFile },
       { id: "c-lib", group: "Commands", title: "Go to library", icon: <IconBook />, run: onLibrary },
     ];
     if (book)
@@ -213,7 +213,7 @@ export function CommandPalette({ onOpenFile, onLibrary }: { onOpenFile(): void; 
           id: `t-${t.id}`,
           group: "Sections",
           title: t.title,
-          detail: `page ${book.pages[t.page]?.label}`,
+          detail: pageText(book, t.page),
           icon: <IconList />,
           run: () => {
             setView("clean");
@@ -232,7 +232,7 @@ export function CommandPalette({ onOpenFile, onLibrary }: { onOpenFile(): void; 
           id: `f-${b.id}`,
           group: "Figures, tables & boxes",
           title: `${b.key} · ${caption.slice(0, 100)}`,
-          detail: `page ${book.pages[b.page]?.label}`,
+          detail: pageText(book, b.page),
           icon: <IconImage />,
           run: () => {
             setView("clean");
@@ -244,7 +244,7 @@ export function CommandPalette({ onOpenFile, onLibrary }: { onOpenFile(): void; 
     }
     const group = bookScope ? "In this book" : "In your library";
     for (const h of hits) {
-      const page = book && h.bookId === book.id ? `page ${book.pages[h.page]?.label}` : h.bookTitle;
+      const page = book && h.bookId === book.id ? pageText(book, h.page) : h.bookTitle;
       out.push({
         id: `h-${h.bookId}-${h.chunkId}`,
         group,
@@ -447,7 +447,7 @@ function AnswerView({ answer, onBack, onSource, bookId }: { answer: Answer; onBa
                     <span className="text-ink">{shortSection(s.section)}</span>
                     <span className="text-ink-3">
                       {" "}
-                      · {book && s.bookId === book.id ? `page ${book.pages[s.page]?.label}` : s.bookTitle}
+                      {book && s.bookId === book.id ? (pageText(book, s.page) ? ` · ${pageText(book, s.page)}` : "") : ` · ${s.bookTitle}`}
                     </span>
                     <span className="block truncate text-ink-3">{s.text.slice(0, 160)}</span>
                   </span>

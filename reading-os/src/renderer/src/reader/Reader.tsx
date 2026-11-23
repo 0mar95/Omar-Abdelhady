@@ -137,6 +137,7 @@ export function Reader({ onOpenFile, onLibrary }: { onOpenFile(): void; onLibrar
           <IconSearch size={14} /> Search or ask
           <kbd className="rounded border border-rule px-1 text-[10.5px]">{isMac ? "⌘K" : "Ctrl K"}</kbd>
         </button>
+        {(!book.format || book.format === "pdf") && (
         <div className="flex rounded-lg bg-paper-2 p-0.5 [-webkit-app-region:no-drag]" role="group" aria-label="View">
           <ViewButton active={view === "clean"} label="Clean text" onClick={() => setView("clean")}>
             <IconBook size={16} />
@@ -145,6 +146,7 @@ export function Reader({ onOpenFile, onLibrary }: { onOpenFile(): void; onLibrar
             <IconPage size={16} />
           </ViewButton>
         </div>
+        )}
         <BarButton label="Reading settings" onClick={() => setOverlay(overlay === "type" ? null : "type")}>
           <IconType />
         </BarButton>

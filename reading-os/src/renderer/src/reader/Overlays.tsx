@@ -7,7 +7,7 @@ import { useNotes } from "../state/notes";
 import { useReader } from "../state/reader";
 import { FONTS, useSettings, type FontChoice, type Theme } from "../state/settings";
 import { IconX } from "../ui/icons";
-import { PageCrop, useZoom } from "./BlockView";
+import { BookImage, PageCrop, useZoom } from "./BlockView";
 
 export function TocSheet() {
   const book = useReader((s) => s.book)!;
@@ -244,7 +244,11 @@ export function ZoomOverlay() {
   return (
     <div className="fixed inset-0 z-[60] flex cursor-zoom-out flex-col items-center justify-center bg-black/75 p-8" onClick={() => set(null)} role="dialog" aria-label={target.title}>
       <div className="rounded-md bg-white p-3 shadow-2xl">
-        <PageCrop page={target.page} rect={target.rect} alt={target.title} maxWidth={w * fit} scale={fit} />
+        {target.image ? (
+          <BookImage image={target.image} alt={target.title} className="max-h-[calc(100vh-140px)] w-auto object-contain" />
+        ) : (
+          <PageCrop page={target.page} rect={target.rect} alt={target.title} maxWidth={w * fit} scale={fit} />
+        )}
       </div>
       <div className="mt-3 font-ui text-[13px] text-white/80">{target.title} · click or press Esc to close</div>
     </div>

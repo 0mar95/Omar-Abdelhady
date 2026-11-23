@@ -90,7 +90,7 @@ function buildMenu(): void {
     {
       label: "File",
       submenu: [
-        { label: "Open PDF…", accelerator: "CmdOrCtrl+O", click: () => send("open") },
+        { label: "Open Book…", accelerator: "CmdOrCtrl+O", click: () => send("open") },
         { label: "Library", accelerator: "CmdOrCtrl+L", click: () => send("library") },
         { type: "separator" },
         process.platform === "darwin" ? { role: "close" } : { role: "quit" },
@@ -149,9 +149,12 @@ function registerIpc(): void {
   ipcMain.handle("file:open-dialog", async (e) => {
     const win = BrowserWindow.fromWebContents(e.sender);
     const result = await dialog.showOpenDialog(win!, {
-      title: "Open a PDF",
+      title: "Open a book",
       properties: ["openFile"],
-      filters: [{ name: "PDF documents", extensions: ["pdf"] }],
+      filters: [
+        { name: "Books and documents", extensions: ["pdf", "epub", "docx", "html", "htm", "xhtml", "md", "markdown", "txt"] },
+        { name: "All files", extensions: ["*"] },
+      ],
     });
     if (result.canceled || !result.filePaths[0]) return null;
     const file = result.filePaths[0];

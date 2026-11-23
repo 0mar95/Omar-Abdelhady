@@ -4,7 +4,7 @@
 
 import { useMemo, useState } from "react";
 import { useGlossary } from "../state/glossary";
-import { useReader } from "../state/reader";
+import { pageText, useReader } from "../state/reader";
 import { IconSparkle, IconX } from "../ui/icons";
 
 export function GlossarySheet() {
@@ -64,7 +64,7 @@ export function GlossarySheet() {
                   <div className="flex items-baseline gap-2">
                     <span className="text-[13.5px] font-semibold text-ink">{t.term}</span>
                     {t.expansion && <span className="truncate text-[12.5px] text-ink-2">{t.expansion}</span>}
-                    <span className="ml-auto shrink-0 text-[11px] tabular-nums text-ink-3">p. {book.pages[t.page]?.label}</span>
+                    <span className="ml-auto shrink-0 text-[11px] tabular-nums text-ink-3">{pageText(book, t.page, "p.")}</span>
                   </div>
                   <div className="mt-0.5 line-clamp-2 text-[12.5px] leading-snug text-ink-2">
                     {ai[t.key] ? (

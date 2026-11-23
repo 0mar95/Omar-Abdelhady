@@ -91,6 +91,7 @@ export function analyzeBook(raw: RawPage[], meta: BookMeta, startedAt = Date.now
 
   return {
     version: EXTRACTOR_VERSION,
+    format: "pdf",
     id: meta.id,
     title: meta.title || guessTitle(blocks, meta.fileName),
     author: meta.author,
@@ -196,7 +197,7 @@ function pageLabels(pages: { w: number; h: number }[], found: Map<number, string
   });
 }
 
-function assignChapters(blocks: Block[]): Chapter[] {
+export function assignChapters(blocks: Block[]): Chapter[] {
   const chapters: Chapter[] = [];
   let current: Chapter = { title: "Front matter", start: 0, end: 0, refs: {} };
   blocks.forEach((b, i) => {
@@ -216,7 +217,7 @@ function assignChapters(blocks: Block[]): Chapter[] {
 }
 
 /** Turns "Fig 1-1", "Table 2-3" and "pages 138–139" in paragraphs into links. */
-function linkReferences(blocks: Block[], pages: PageInfo[]): void {
+export function linkReferences(blocks: Block[], pages: PageInfo[]): void {
   const keys = new Set<string>();
   for (const b of blocks) if ((b.kind === "figure" || b.kind === "table" || b.kind === "box") && b.key) keys.add(b.key);
   const labelToPage = new Map<string, number>();
@@ -258,7 +259,7 @@ function linkReferences(blocks: Block[], pages: PageInfo[]): void {
   }
 }
 
-function buildToc(blocks: Block[]): TocEntry[] {
+export function buildToc(blocks: Block[]): TocEntry[] {
   const toc: TocEntry[] = [];
   for (const b of blocks) {
     if (b.kind === "heading" && b.level <= 3) {

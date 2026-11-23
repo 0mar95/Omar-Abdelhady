@@ -4,6 +4,8 @@ import type { OpenedFile } from "../../../shared/ipc";
 import { blockText, type Block, type BookDoc } from "../../../shared/model";
 import type { ExtractProgress } from "../../../shared/pdf/extract";
 import { countWords } from "../../../shared/pdf/text";
+import { detectFormat } from "../../../shared/formats";
+import { loadOrConvert, setBookFiles } from "../formats";
 import { bookIdFor, loadOrExtract, openPdf } from "../pdf";
 import { platform } from "../platform";
 import { useLibrary, type LibraryEntry } from "./library";
@@ -52,6 +54,12 @@ export function indexBook(book: BookDoc): BookIndex {
     else next = pageFirstBlock[p];
   }
   return { byId, wordsBefore, totalWords: words, byKey, pageFirstBlock, texts };
+}
+
+/** "page 36" for books with printed pages; empty for EPUBs and documents, which have none. */
+export function pageText(book: BookDoc, page: number, word = "page"): string {
+  const label = book.pages[page]?.label;
+  return label ? `${word} ${label}` : "";
 }
 
 export interface JumpTarget {
@@ -108,8 +116,17 @@ export const useReader = create<ReaderStore>((set, get) => ({
     set({ status: "loading", progress: { phase: "reading", done: 0, total: 1 }, error: null, overlay: null });
     try {
       const id = await bookIdFor(file.bytes);
-      const doc = await openPdf(file.bytes);
-      const book = await loadOrExtract(doc, id, file.name, (p) => set({ progress: p }));
+      const format = detectFormat(file.bytes, file.name);
+      let doc: PDFDocumentProxy | null = null;
+      let book: BookDoc;
+      let files: Record<string, Uint8Array> | null = null;
+      if (format === "pdf") {
+        doc = await openPdf(file.bytes);
+        book = await loadOrExtract(doc, id, file.name, (p) => set({ progress: p }));
+      } else {
+        // EPUB, Word, HTML, Markdown and text convert in well under a second.
+        ({ book, files } = await loadOrConvert(file.bytes, id, file.name));
+      }
       await platform.rememberBook(id, file);
       const lib = useLibrary.getState();
       const existing = lib.entries.find((e) => e.id === id);
@@ -119,6 +136,7 @@ export const useReader = create<ReaderStore>((set, get) => ({
         fileName: file.name,
         path: file.path ?? existing?.path,
         pageCount: book.pageCount,
+        format: book.format ?? "pdf",
         words: book.stats.words,
         chapters: book.chapters.length,
         addedAt: existing?.addedAt ?? Date.now(),
@@ -128,6 +146,7 @@ export const useReader = create<ReaderStore>((set, get) => ({
       };
       lib.upsert(entry);
       void get().doc?.loadingTask.destroy();
+      setBookFiles(files);
       const ix = indexBook(book);
       const start = entry.position && ix.byId.has(entry.position) ? entry.position : book.blocks[0]?.id;
       set({
@@ -137,6 +156,8 @@ export const useReader = create<ReaderStore>((set, get) => ({
         doc,
         entry,
         progress: null,
+        // Only PDFs have original pages to show.
+        view: book.format && book.format !== "pdf" ? "clean" : get().view,
         currentBlock: start ?? null,
         currentPage: start ? book.blocks[ix.byId.get(start)!].page : 0,
         jump: start ? { blockId: start, nonce: Date.now() } : null,
@@ -165,10 +186,13 @@ export const useReader = create<ReaderStore>((set, get) => ({
     useNotes.getState().close();
     useGlossary.getState().close();
     void get().doc?.loadingTask.destroy();
+    setBookFiles(null);
     set({ status: "idle", book: null, ix: null, doc: null, entry: null, overlay: null, jump: null });
   },
 
   setView(view) {
+    const f = get().book?.format;
+    if (view === "page" && f && f !== "pdf") return;
     set({ view });
   },
 

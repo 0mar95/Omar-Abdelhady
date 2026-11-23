@@ -1,6 +1,7 @@
 // Everything that differs between the desktop app (Electron) and the browser
 // build used for development and automated tests.
 
+import { BOOK_EXTENSIONS } from "../../shared/formats";
 import type {
   AiConfig,
   AiStatus,
@@ -160,7 +161,7 @@ function webPlatform(): Platform {
       return new Promise((resolve) => {
         const input = document.createElement("input");
         input.type = "file";
-        input.accept = "application/pdf,.pdf";
+        input.accept = BOOK_EXTENSIONS.map((e) => `.${e}`).join(",");
         input.onchange = async () => {
           const f = input.files?.[0];
           resolve(f ? { name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) } : null);
