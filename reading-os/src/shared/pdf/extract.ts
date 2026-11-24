@@ -2,6 +2,7 @@
 // (tests and the command-line extractor); the caller passes in pdf.js.
 
 import { repairPrivateGlyphs } from "./glyphs.ts";
+import type { OutlineItem } from "../structure.ts";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import type { BookDoc } from "../model.ts";
 import { analyzeBook } from "./analyze.ts";
@@ -48,11 +49,34 @@ export async function extractFromDocument(
   } catch {
     /* metadata is optional */
   }
+  const outline = await readOutline(doc).catch(() => undefined);
   // Ligatures drawn with private glyphs ("e\uE01Aects") get their letters back.
   repairPrivateGlyphs(raw);
-  const book = analyzeBook(raw, { ...meta, title, author }, started);
+  const book = analyzeBook(raw, { ...meta, title, author, outline }, started);
   onProgress?.({ phase: "analyzing", done: 1, total: 1 });
   return book;
+}
+
+/** The PDF's bookmarks, flattened: title, depth and the page each points to. */
+async function readOutline(doc: PDFDocumentProxy): Promise<OutlineItem[] | undefined> {
+  const tree = await doc.getOutline();
+  if (!tree?.length) return undefined;
+  const out: OutlineItem[] = [];
+  const walk = async (items: typeof tree, level: number) => {
+    for (const it of items) {
+      try {
+        const dest = typeof it.dest === "string" ? await doc.getDestination(it.dest) : it.dest;
+        const ref = Array.isArray(dest) ? dest[0] : null;
+        const page = ref && typeof ref === "object" ? await doc.getPageIndex(ref) : typeof ref === "number" ? ref : -1;
+        if (page >= 0 && it.title?.trim()) out.push({ title: it.title.trim(), level, page });
+      } catch {
+        /* a broken bookmark is skipped */
+      }
+      if (it.items?.length) await walk(it.items, level + 1);
+    }
+  };
+  await walk(tree, 1);
+  return out.length ? out : undefined;
 }
 
 /** Stable id from file size and a sample of its bytes (fast for large files). */

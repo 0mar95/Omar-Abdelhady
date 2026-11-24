@@ -154,7 +154,7 @@ export const CleanView = memo(function CleanView({ scrollRef }: { scrollRef: Rea
   // Every book opens with a composed title page, then its contents.
   const opening = useMemo(() => {
     const titlePage = book.blocks.find((b) => b.kind === "titlepage");
-    const hasContents = book.blocks.some((b) => b.kind === "contents");
+    const about = book.blocks.find((b) => b.kind === "about");
     const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
     // Without title pages, a first heading that just repeats the title would show twice.
     const first = book.blocks[0];
@@ -164,22 +164,23 @@ export const CleanView = memo(function CleanView({ scrollRef }: { scrollRef: Rea
     // Only compose a title page from the file's details when they name the book properly.
     const decent = !/^(?:abstract|preface|foreword|contents|introduction|untitled|chapter \d+)$/i.test(book.title.trim()) && /\p{L}{3,}/u.test(book.title) && !/\.\.|^\S+\.\d+/.test(book.title);
     const synth = !titlePage && decent;
-    return { synth, afterId: titlePage?.id, list: !hasContents && (synth || !!titlePage), skip: synth ? skip : null, cover: synth ? cover?.id : undefined };
+    // Kenning's own contents (the printed one isn't shown): after the title page and About this book.
+    const afterId = about?.id ?? titlePage?.id;
+    return { synth, afterId, list: true, listAtTop: synth && !afterId, skip: synth ? skip : null, cover: synth ? cover?.id : undefined };
   }, [book]);
 
   // Key points shown in a chapter opener aren't repeated where they were printed.
   const pulled = useMemo(() => outlineOf(book, ix).pulled, [book, ix]);
 
-  let prevPage = -1;
   return (
     <div className="reader px-6 pb-[40vh] pt-20 sm:px-12" style={style}>
       <article ref={articleRef} className={`book ${settings.indent ? "indented" : ""} ${gutter ? "with-gutter" : ""} ${settings.focus ? "focus" : ""}`} lang="en">
         {opening.synth && <TitlePage b={{ title: "", details: [] }} />}
-        {opening.synth && opening.list && <ChapterList />}
+        {opening.listAtTop && <ChapterList />}
         {book.blocks.map((b, i) => {
           if (b.id === opening.skip || b.id === opening.cover || pulled.has(b.id)) return null;
-          const label = settings.pageNumbers && b.page !== prevPage ? book.pages[b.page]?.label : undefined;
-          prevPage = b.page;
+          // Printed page numbers belong to the PDF, not to this book: not shown.
+          const label = undefined;
           const attached = cardsByBlock.get(b.id);
           const note = settings.marginNotes && b.kind === "heading" ? notes.get(b.id) : undefined;
           const isWorking = settings.marginNotes && working === b.id;

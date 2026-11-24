@@ -57,8 +57,13 @@ Build an installer with `npm run dist:mac` or `npm run dist:win`.
   line length, justification and book-style indents.
 
 **Every book opens the same way** — a composed title page (cover, title,
-subtitle, authors, edition, publisher) and the contents; the copyright and
-cataloguing pages fold into one closed "Publication details" panel.
+subtitle, authors, edition, publisher), then one closed "About this book"
+(copyright, adverts, dedication, contributors, acknowledgements), then
+Kenning's own contents: chapters with their sections and reading times, no
+page numbers. Chapters come from the PDF's bookmarks when it has them,
+otherwise from the book's headings; the printed contents page only confirms
+chapter numbers and authors. Blank pages are dropped; the foreword and
+preface stay to be read.
 Each chapter opens with its number, title, authors, reading time, its own key
 points or objectives, and a clickable list of its sections.
 

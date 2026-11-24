@@ -248,7 +248,6 @@ function ReaderFooter({ visible }: { visible: boolean }) {
       <div className="flex items-center justify-between px-5 pb-2 text-[11.5px] tabular-nums text-ink-3">
         <span>
           {info.minutesLeft > 0 ? `${info.minutesLeft} min left in chapter` : "End of chapter"}
-          {info.page ? ` · page ${info.page}` : ""}
         </span>
         <span>
           <IndexProgress />

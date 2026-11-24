@@ -82,6 +82,8 @@ const render = (b: Block): string => {
       return `<details>${pg}<summary>${esc(b.title)} (${b.lines.length} lines)</summary><pre>${esc(b.lines.join("\n"))}</pre></details>`;
     case "code":
       return `<pre>${pg}${esc(b.lines.join("\n"))}</pre>`;
+    case "about":
+      return `<details>${pg}<summary>About this book</summary>${b.sections.map((s) => `<h4>${esc(s.title)}</h4>${s.lines.map((l) => `<p><small>${esc(l)}</small></p>`).join("")}`).join("")}</details>`;
     case "titlepage":
       return `<header>${pg}<h1>${esc(b.title)}</h1>${b.subtitle ? `<h3>${esc(b.subtitle)}</h3>` : ""}${b.byline ? `<p><b>${b.edited ? "Edited by " : ""}${esc(b.byline)}</b></p>` : ""}${[b.edition, b.publisher, ...b.details].filter(Boolean).map((l) => `<p><small>${esc(l!)}</small></p>`).join("")}</header>`;
     case "imprint":

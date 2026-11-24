@@ -10,6 +10,7 @@ import {
   type Span,
   type TocEntry,
 } from "../model.ts";
+import { applyOutline, organizeOpening, settleChapters, type OutlineItem } from "../structure.ts";
 import { bookTitle, cleanTitle, normalizeStructure, placeFigures, recoverContents } from "../normalize.ts";
 import { BlockBuilder, colFor, type HeadingStyles, type Item } from "./blocks.ts";
 import { detectLayout, dominantLayout, findFurniture, fitLayout, lineRect, readingOrder, splitAtGutter, type PageLayout } from "./layout.ts";
@@ -23,6 +24,8 @@ export interface BookMeta {
   fileName: string;
   title?: string;
   author?: string;
+  /** The PDF's own bookmarks, when it has them. */
+  outline?: OutlineItem[];
 }
 
 export function analyzeBook(raw: RawPage[], meta: BookMeta, startedAt = Date.now()): BookDoc {
@@ -86,6 +89,9 @@ export function analyzeBook(raw: RawPage[], meta: BookMeta, startedAt = Date.now
   blocks = recoverContents(blocks);
   chaptersFromContents(blocks, pageInfos);
   blocks = normalizeStructure(blocks);
+  blocks = applyOutline(blocks, meta.outline);
+  blocks = organizeOpening(blocks);
+  settleChapters(blocks);
   linkReferences(blocks, pageInfos);
   blocks = placeFigures(blocks);
   const chapters = assignChapters(blocks);

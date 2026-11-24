@@ -2,9 +2,9 @@
 // links) are plain elements with data attributes; Reader handles hover and
 // clicks for all of them with a few delegated listeners.
 
-import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 import { create } from "zustand";
-import type { Block, BookDoc, BoxBlock, HeadingBlock, ContentsBlock, ContentsEntry, FigureBlock, Span, TableBlock, TitlePageBlock } from "../../../shared/model";
+import type { AboutBlock, Block, BoxBlock, HeadingBlock, FigureBlock, Span, TableBlock, TitlePageBlock } from "../../../shared/model";
 import { useCover } from "../covers";
 import { useHighlights, type Highlight } from "../state/highlights";
 import { formatMinutes, outlineOf } from "./outline";
@@ -12,7 +12,7 @@ import type { TermMatch } from "../../../shared/glossary/extract";
 import { imageUrl } from "../formats";
 import { renderRegion } from "../pdf";
 import { useGlossary } from "../state/glossary";
-import { useReader, type BookIndex } from "../state/reader";
+import { useReader } from "../state/reader";
 import { useSettings } from "../state/settings";
 import { IconBulb, IconImage } from "../ui/icons";
 
@@ -340,49 +340,6 @@ function Box({ b }: { b: BoxBlock }) {
 
 const EMPTY = new Set<string>();
 
-const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
-
-/** Where a contents entry points: its printed page (and the heading there), else a heading of that title. */
-function contentsTarget(book: BookDoc, ix: BookIndex, from: number, e: ContentsEntry): string | null {
-  const title = norm(e.title);
-  const page = book.pages.findIndex((p, i) => i > book.blocks[from].page && p.label === e.page);
-  if (page >= 0) {
-    const start = ix.pageFirstBlock[page];
-    for (let i = start; i < book.blocks.length && book.blocks[i].page <= page + 1; i++) {
-      const b = book.blocks[i];
-      if (b.kind === "heading" && norm(b.text) === title) return b.id;
-    }
-    return book.blocks[start]?.id ?? null;
-  }
-  const t = book.toc.find((x) => norm(x.title) === title && (ix.byId.get(x.blockId) ?? 0) > from);
-  return t?.blockId ?? null;
-}
-
-function Contents({ b }: { b: ContentsBlock }) {
-  const book = useReader((s) => s.book)!;
-  const ix = useReader((s) => s.ix)!;
-  const targets = useMemo(() => {
-    const from = ix.byId.get(b.id) ?? 0;
-    return b.entries.map((e) => contentsTarget(book, ix, from, e));
-  }, [b, book, ix]);
-  return (
-    <ol className="contents font-ui text-[0.88em]">
-      {b.entries.map((e, i) => (
-        <li key={i} className={e.sub || e.num?.includes(".") ? "sub" : e.num ? "chapter" : undefined}>
-          <button type="button" disabled={!targets[i]} onClick={() => targets[i] && useReader.getState().jumpTo({ blockId: targets[i]! })}>
-            <span className="num">{e.num}</span>
-            <span className="min-w-0">
-              <span className={e.num && !e.num.includes(".") ? "font-medium" : "text-ink-2"}>{e.title}</span>
-              {e.authors && <span className="mt-0.5 block text-[0.82em] font-normal italic text-ink-3">{e.authors}</span>}
-            </span>
-            <span className="leader" aria-hidden />
-            <span className="pg">{e.page}</span>
-          </button>
-        </li>
-      ))}
-    </ol>
-  );
-}
 
 /**
  * Every book opens the same way: cover, title, subtitle, authors, edition and
@@ -420,26 +377,69 @@ export function TitlePage({ b }: { b: Pick<TitlePageBlock, "title" | "subtitle" 
 }
 
 /** For books without a contents page of their own: the chapters, one click away. */
+/** Kenning's own contents: chapters and their sections, with reading times, no page numbers. */
 export function ChapterList() {
   const book = useReader((s) => s.book)!;
-  const chapters = book.chapters.filter((c) => c.title !== "Front matter");
+  const ix = useReader((s) => s.ix)!;
+  const outline = outlineOf(book, ix);
+  const chapters = book.chapters.filter((c) => c.title !== "Front matter" && book.blocks[c.start]?.kind === "heading");
   if (chapters.length < 2) return null;
+  const go = (id: string) => useReader.getState().jumpTo({ blockId: id });
   return (
-    <nav aria-label="Chapters" className="mb-16">
+    <nav aria-label="Contents" className="book-contents mb-16 font-ui">
       <h2 className="!mt-0">Contents</h2>
-      <ol className="contents font-ui text-[0.88em]">
-        {chapters.map((c, i) => (
-          <li key={i} className={c.number ? "chapter" : undefined}>
-            <button type="button" onClick={() => useReader.getState().jumpTo({ blockId: book.blocks[c.start].id })}>
-              <span className="num">{c.number}</span>
-              <span className="min-w-0 font-medium">{c.title}</span>
-              <span className="leader" aria-hidden />
-              <span className="pg">{book.pages[book.blocks[c.start].page]?.label}</span>
-            </button>
-          </li>
-        ))}
+      <ol>
+        {chapters.map((c, i) => {
+          const head = book.blocks[c.start];
+          const o = outline.byHeading.get(head.id);
+          const sections = book.toc.filter((t) => t.level === 2 && (ix.byId.get(t.blockId) ?? -1) > c.start && (ix.byId.get(t.blockId) ?? -1) < c.end);
+          return (
+            <li key={i}>
+              <button type="button" className="chapter-row" onClick={() => go(head.id)}>
+                <span className="num">{c.number}</span>
+                <span className="title">{c.title}</span>
+                {o && <span className="time">{o.minutes} min</span>}
+              </button>
+              {sections.length > 0 && sections.length <= 40 && (
+                <ol className="sections">
+                  {sections.map((t) => (
+                    <li key={t.id}>
+                      <button type="button" onClick={() => go(t.blockId)}>
+                        {t.title}
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </li>
+          );
+        })}
       </ol>
     </nav>
+  );
+}
+
+/** The opening pages that aren't read through, folded into one place. */
+function About({ b }: { b: AboutBlock }) {
+  return (
+    <details className="group my-8 rounded-lg border border-rule font-ui">
+      <summary className="cursor-pointer list-none px-4 py-3 text-[0.8em] font-semibold text-ink-2 hover:text-ink">
+        <span className="mr-2 inline-block transition-transform group-open:rotate-90">›</span>
+        About this book <span className="font-normal text-ink-3">· {b.sections.map((x) => x.title.toLowerCase()).join(", ")}</span>
+      </summary>
+      <div className="space-y-4 border-t border-rule px-4 py-3 text-[0.72em] leading-snug text-ink-2">
+        {b.sections.map((sec, i) => (
+          <section key={i}>
+            <h4 className="!m-0 !mb-1 text-[1em] font-semibold text-ink">{sec.title}</h4>
+            {sec.lines.map((l, k) => (
+              <p key={k} className="!m-0 !text-left">
+                {l}
+              </p>
+            ))}
+          </section>
+        ))}
+      </div>
+    </details>
   );
 }
 
@@ -569,7 +569,10 @@ function BlockInner({ b }: { b: Block }) {
         </details>
       );
     case "contents":
-      return <Contents b={b} />;
+      // The printed contents page: Kenning shows its own contents instead.
+      return null;
+    case "about":
+      return <About b={b} />;
     case "titlepage":
       return <TitlePage b={b} />;
     case "imprint":

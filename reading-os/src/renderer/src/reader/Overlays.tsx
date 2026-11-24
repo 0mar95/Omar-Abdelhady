@@ -68,7 +68,6 @@ export function TocSheet() {
                 style={{ paddingLeft: 8 + (t.level - 1) * 14 }}
               >
                 <span className={`min-w-0 flex-1 ${t.level === 1 ? "text-[13.5px] font-semibold" : t.level === 2 ? "text-[13px] text-ink" : "text-[12.5px] text-ink-2"}`}>{t.title}</span>
-                <span className="shrink-0 text-[11px] tabular-nums text-ink-3">{book.pages[t.page]?.label}</span>
               </button>
             );
           })}
@@ -226,12 +225,10 @@ function TextTab() {
 
 function PageTab() {
   const s = useSettings();
-  const isPdf = useReader((r) => !r.book?.format || r.book.format === "pdf");
   return (
     <div className="flex flex-col">
       <Switch label="Indent paragraphs" hint="Book style: no gap between paragraphs" value={s.indent} onChange={(v) => s.set({ indent: v })} />
       <Switch label="Justify text" hint="Straight right edge" value={s.justify} onChange={(v) => s.set({ justify: v })} />
-      {isPdf && <Switch label="Page numbers in margin" hint="The printed page numbers" value={s.pageNumbers} onChange={(v) => s.set({ pageNumbers: v })} />}
       <Switch label="Underline glossary terms" hint="Hover one for its definition" value={s.glossaryMarks} onChange={(v) => s.set({ glossaryMarks: v })} />
       <Switch label="Focus mode" hint="Dim everything but the paragraph you're reading · F" value={s.focus} onChange={(v) => s.set({ focus: v })} />
     </div>

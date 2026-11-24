@@ -31,6 +31,12 @@ export function tidyHeading(text: string): string {
 
 export function normalizeStructure(input: Block[], totalWords?: number): Block[] {
   let blocks = input.filter((b) => b.kind !== "heading" || b.text.trim());
+  // A quotation set in display type (an epigraph) is not a heading.
+  blocks = blocks.map((b) =>
+    b.kind === "heading" && /^[“"‘«]/.test(b.text.trim()) && b.text.length > 25 && !/\b(?:chapter|part|book)\s*(?:\d{1,3}|[ivxlc]{1,7})\b/i.test(b.text)
+      ? { kind: "paragraph", id: b.id, page: b.page, rect: b.rect, chapter: b.chapter, spans: [{ text: b.text, i: true }] }
+      : b,
+  );
   for (const b of blocks) if (b.kind === "heading") b.text = tidyHeading(b.text);
 
   // "Chapter 3" + the title just after it → one chapter heading, numbered 3.
@@ -42,8 +48,8 @@ export function normalizeStructure(input: Block[], totalWords?: number): Block[]
       continue;
     }
     // A picture caption glued in front of the label: "He rode a black horse. CHAPTER III."
-    const glued = /^.+[.!?]["”’]?\s+((?:chapter|part|book)\s+(?:\d{1,3}|[ivxlc]{1,7})\.?)$/i.exec(b.text);
-    if (glued) b.text = tidyHeading(glued[1].replace(/\.$/, ""));
+    const glued = /^.+[.!?]["”’]?\s+((?:chapter|part|book)\s*(?:\d{1,3}|[ivxlc]{1,7})\.?)$/i.exec(b.text);
+    if (glued) b.text = tidyHeading(glued[1].replace(/\.$/, "").replace(/^(chapter|part|book)(?=[\divxlc])/i, "$1 "));
     const m = CHAPTER_LABEL.exec(b.text);
     const next = blocks[i + 1];
     if (m && !m[2].trim() && next?.kind === "heading" && next.page <= b.page + 1) {

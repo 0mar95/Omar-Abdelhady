@@ -7,6 +7,7 @@ import { unzipSync } from "fflate";
 import { EXTRACTOR_VERSION, blockText, type Block, type BookDoc, type BookFormat, type PageInfo } from "../model.ts";
 import { assignChapters, buildToc, linkReferences } from "../pdf/analyze.ts";
 import { countWords } from "../pdf/text.ts";
+import { organizeOpening, settleChapters } from "../structure.ts";
 import { bookTitle, cleanTitle, normalizeStructure, placeFigures } from "../normalize.ts";
 import { HtmlConverter, normalizeHeadings } from "./html.ts";
 import { textToBlocks } from "./text.ts";
@@ -109,6 +110,8 @@ function finish(
 ): BookDoc {
   normalizeHeadings(raw);
   let blocks = normalizeStructure(raw);
+  blocks = organizeOpening(blocks);
+  settleChapters(blocks);
   linkReferences(blocks, pages);
   blocks = placeFigures(blocks);
   const chapters = assignChapters(blocks);
