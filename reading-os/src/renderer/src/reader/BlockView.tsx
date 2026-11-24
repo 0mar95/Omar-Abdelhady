@@ -351,7 +351,7 @@ function Contents({ b }: { b: ContentsBlock }) {
   return (
     <ol className="contents font-ui text-[0.88em]">
       {b.entries.map((e, i) => (
-        <li key={i} className={e.num?.includes(".") ? "sub" : e.num ? "chapter" : undefined}>
+        <li key={i} className={e.sub || e.num?.includes(".") ? "sub" : e.num ? "chapter" : undefined}>
           <button type="button" disabled={!targets[i]} onClick={() => targets[i] && useReader.getState().jumpTo({ blockId: targets[i]! })}>
             <span className="num">{e.num}</span>
             <span className="min-w-0">

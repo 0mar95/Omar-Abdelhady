@@ -61,6 +61,7 @@ export function normalizeStructure(input: Block[], totalWords?: number): Block[]
   blocks = merged;
 
   blocks = recoverContents(blocks);
+  tidyContents(blocks);
   blocks = headingOnlyPages(blocks);
   blocks = inlineAddresses(blocks);
   blocks = tidyOpening(blocks);
@@ -149,7 +150,12 @@ const IMPRINT = [
   /\bpermission\b.*\bpublisher\b/i,
   /permission is granted to copy/i,
   // The publisher's advert for the e-book edition, on a page of its own.
-  /activate the e-?book|redeem|scratch off|pin code|access code|expert ?consult|evolve\.elsevier|vitalsource|any screen\. any time/i,
+  /activate the e-?book/i,
+  /\bredeem\b/i,
+  /scratch off|peel off/i,
+  /\b(?:pin|access) code\b/i,
+  /expert ?consult|evolve\.elsevier|vitalsource|inkling/i,
+  /any screen\. any time/i,
   /creative commons|gnu free documentation licen[cs]e/i,
   /typeset|set in \d/i,
 ];
@@ -174,6 +180,8 @@ export function tidyOpening(blocks: Block[]): Block[] {
     if (bs.some((b) => b.kind === "contents")) continue;
     const text = bs.map(blockText).join("\n");
     const opensWith = bs.find((b) => blockText(b).trim())?.kind ? blockText(bs.find((b) => blockText(b).trim())!).trim() : "";
+    // (Copyright and advert pages are short: a whole book on one "page" — plain text — never is.)
+    if ((text.match(/\S+/g) ?? []).length > 700) continue;
     if (IMPRINT.filter((re) => re.test(text)).length >= 2 || /^disclaimer\b/i.test(opensWith)) imprint.add(page);
   }
   // The title pages: everything before the imprint or contents page, if it comes early.
@@ -237,7 +245,7 @@ const EDITION = /\b(?:\d+(?:st|nd|rd|th)|first|second|third|fourth|fifth|sixth|s
 /** Words in a degree list: "DDS", "PhD", "Dr med dent", "FRCS (OMFS)". */
 const DEGREE = /^(?:\(?[A-Z][A-Za-z]{0,5}\.?\)?|Dr|Prof|med|dent|dent\.|habil|rer|nat|PD|MSc|BSc|PhD|MDSc|BDSc)$/;
 /** Words that start a label, never a person's name ("Volume Two", "Part One"). */
-const NOT_A_NAME = /^(?:volume|vol\.?|part|book|edition|series|chapter|section|unit|module|appendix)\b/i;
+const NOT_A_NAME = /^(?:volume|vol\.?|part|book|edition|series|chapter|section|unit|module|appendix)\b|\b(?:professor|lecturer|university|college|school|department|hospital|institute|clinic|dean|chairman|director|consultant|emeritus|distinguished|associate|assistant|private|practice|faculty|center|centre)\b/i;
 const BY_LINE = /^(?:(?:edited|written|compiled|illustrated)\s+)?by:?$|^editors?:?$|^authors?:?$/i;
 const NAME = /^(?:(?:Dr|Prof|Professor|Sir|Dame)\.?\s+)?\p{Lu}[\p{L}'’.-]*(?:\s+(?:(?:van|von|de|da|del|di|le|la|du|bin|al)\s+)?\p{Lu}[\p{L}'’.-]*){1,3}$/u;
 const PUBLISHER = /\b(?:press|publishing|publishers?|wiley|elsevier|springer|quintessence|thieme|mosby|saunders|lippincott|mcgraw|routledge|penguin|harper|\bltd\b|\binc\b)/i;
@@ -487,8 +495,10 @@ export function placeFigures(blocks: Block[]): Block[] {
  */
 export function bookTitle(blocks: Block[], metaTitle: string | undefined): string | undefined {
   const tp = blocks.find((b): b is TitlePageBlock => b.kind === "titlepage");
-  const page = tp?.title?.trim();
   const meta = cleanTitle(metaTitle?.trim());
+  // Text from a font without a character table comes out as symbols: then the file's own title is better.
+  if (tp?.title && (tp.title.match(/[$%*!"#&'()+]/g) ?? []).length > tp.title.length * 0.1) tp.title = meta ?? "";
+  const page = tp?.title?.trim();
   if (!page) return meta || undefined;
   const n = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
   if (meta && n(meta).includes(n(page))) return meta;
@@ -667,6 +677,8 @@ export function cleanTitle(raw: string | undefined): string | undefined {
   let t = raw
     .replace(/\.(pdf|epub|docx?|html?|md|txt)$/i, "")
     .replace(/[_]+/g, " ")
+    // Download sites' tags: "( PDFDrive )", "[z-lib.org]", "(www.ebook3000.com)".
+    .replace(/\s*[([]\s*(?:pdf ?drive|z-?lib(?:rary)?(?:\.\w+)?|lib ?gen|dokumen\.pub|ebook\w*|www\.[^)\]]+|[^)\]\s]+\.(?:com|org|net|pub))\s*[)\]]/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
   const parts = t.split(/\s+[-–—|]\s+|\s*\|\s*/);
@@ -678,6 +690,42 @@ export function cleanTitle(raw: string | undefined): string | undefined {
   t = t
     .replace(/\s*\(\d{4}\)\s*$/, "")
     .replace(/\s*\[[^\]]*\]\s*$/, "")
+    .replace(/\s+(?:pdf ?drive|z-?lib(?:rary)?|lib ?gen)\s*$/i, "")
     .trim();
   return t || raw;
+}
+
+const BOOK_PARTS = /^(?:index|preface|foreword|contributors?|acknowledg(?:e)?ments?|dedication|introduction|appendix|appendices|glossary|bibliography|references|abbreviations|about the (?:authors?|editors?))\b/i;
+
+/**
+ * One shape for every contents page: titles without trailing commas, and —
+ * when a list of a chapter's sections follows the chapters (their pages
+ * starting again from the front) — those sections nested under their chapter.
+ */
+export function tidyContents(blocks: Block[]): void {
+  for (const b of blocks) {
+    if (b.kind !== "contents") continue;
+    for (const e of b.entries) e.title = e.title.replace(/\s*[,;:]\s*$/, "").trim();
+    const page = (e: ContentsEntry) => (/^\d+$/.test(e.page) ? Number(e.page) : null);
+    const chapters = b.entries.filter((e) => e.num && /^\d+$/.test(e.num) && page(e) !== null);
+    if (chapters.length < 3) continue;
+    const lastChapter = b.entries.lastIndexOf(chapters[chapters.length - 1]);
+    // Entries after the chapter list whose pages fall back inside the book: sections.
+    const late = b.entries.slice(lastChapter + 1).filter((e) => !e.num && !BOOK_PARTS.test(e.title) && page(e) !== null && page(e)! < page(chapters[chapters.length - 1])!);
+    if (late.length < 3) continue;
+    const owner = (e: ContentsEntry) => [...chapters].reverse().find((c) => page(c)! <= page(e)!) ?? chapters[0];
+    const lateSet = new Set(late);
+    const under = new Map<ContentsEntry, ContentsEntry[]>();
+    for (const e of late) {
+      e.sub = true;
+      const c = owner(e);
+      under.set(c, [...(under.get(c) ?? []), e]);
+    }
+    const out: ContentsEntry[] = [];
+    for (const e of b.entries) {
+      if (lateSet.has(e)) continue;
+      out.push(e, ...(under.get(e) ?? []));
+    }
+    b.entries = out;
+  }
 }

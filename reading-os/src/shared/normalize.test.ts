@@ -263,6 +263,35 @@ describe("cleanTitle", () => {
     expect(cleanTitle("Color Atlas of Oral and Maxillofacial Diseases - Brad W. Neville, Douglas D. Damm, Carl M. Allen, Angela C. Chi - (2019) 546pp. 978-0323552257")).toBe("Color Atlas of Oral and Maxillofacial Diseases");
     expect(cleanTitle("Techniques_for_Success_with_Implants_in_The_Esthetic_Zone.pdf")).toBe("Techniques for Success with Implants in The Esthetic Zone");
     expect(cleanTitle("Think Python")).toBe("Think Python");
+    expect(cleanTitle("Color Atlas of Oral and Maxillofacial Diseases ( PDFDrive )")).toBe("Color Atlas of Oral and Maxillofacial Diseases");
+    expect(cleanTitle("Color_Atlas_of_Oral_and_Maxillofacial_Diseases__PDFDrive_.pdf")).toBe("Color Atlas of Oral and Maxillofacial Diseases");
     expect(cleanTitle("Orofacial Pain - Guidelines for Assessment")).toBe("Orofacial Pain: Guidelines for Assessment");
+  });
+});
+
+describe("tidyContents", () => {
+  it("drops trailing commas and nests a chapter's section list under it", () => {
+    const entries = [
+      { num: "1", title: "Developmental Defects,", page: "1" },
+      { num: "2", title: "Pathology of Teeth,", page: "41" },
+      { num: "3", title: "Pulp and Periapical Disease,", page: "79" },
+      { title: "Index,", page: "529" },
+      { title: "Cleft Lip and Palate,", page: "2" },
+      { title: "Bifid Uvula,", page: "2" },
+      { title: "Fordyce Granules,", page: "6" },
+      { title: "Attrition,", page: "42" },
+    ];
+    const out = normalizeStructure([h("Contents", 1, 4), { kind: "contents", id: "c", page: 4, rect: R, chapter: 0, entries } as Block]);
+    const c = out.find((b) => b.kind === "contents");
+    expect(c?.kind === "contents" && c.entries.map((e) => `${e.sub ? "  " : ""}${e.num ?? ""} ${e.title} ${e.page}`.trim())).toEqual([
+      "1 Developmental Defects 1",
+      "Cleft Lip and Palate 2",
+      "Bifid Uvula 2",
+      "Fordyce Granules 6",
+      "2 Pathology of Teeth 41",
+      "Attrition 42",
+      "3 Pulp and Periapical Disease 79",
+      "Index 529",
+    ].map((x) => x));
   });
 });
