@@ -151,6 +151,13 @@ export function CommandPalette({ onOpenFile, onLibrary }: { onOpenFile(): void; 
         { id: "c-recap-book", group: "Commands", title: "Recap the book so far", icon: <IconSparkle />, run: () => openRecap("book") },
         { id: "c-type", group: "Commands", title: "Reading settings (font, size, theme, AI)", icon: <IconType />, run: () => setOverlay("type") },
         {
+          id: "c-focus",
+          group: "Commands",
+          title: useSettings.getState().focus ? "Turn focus mode off" : "Focus mode: dim all but the paragraph you're reading",
+          icon: <IconBook />,
+          run: () => useSettings.getState().set({ focus: !useSettings.getState().focus }),
+        },
+        {
           id: "c-notes",
           group: "Commands",
           title: useSettings.getState().marginNotes ? "Hide margin notes" : "Show margin notes",

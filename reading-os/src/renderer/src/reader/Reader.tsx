@@ -9,7 +9,8 @@ import { IconLibrary, IconSearch, IconToc, IconType } from "../ui/icons";
 import { CleanView } from "./CleanView";
 import { Hovercards } from "./Hovercards";
 import { GlossarySheet } from "./GlossarySheet";
-import { TocSheet, TypePanel, ZoomOverlay } from "./Overlays";
+import { TocSheet, TypePanel } from "./Overlays";
+import { ZoomOverlay } from "./Viewers";
 import { RecapPanel } from "./RecapPanel";
 import { openRecap } from "../state/recap";
 import { SelectionMenu } from "./SelectionMenu";
@@ -31,15 +32,25 @@ export function Reader({ onOpenFile, onLibrary }: { onOpenFile(): void; onLibrar
     void useCards.getState().load(book.id);
   }, [book.id]);
 
-  // Bars hide while reading forward and come back on scroll up or near the top.
+  // Bars fade away while reading forward, come back on scroll up or near the
+  // top edge, and fade again after a few quiet seconds.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     let lastY = el.scrollTop;
     let lastPing = 0;
+    let idle = 0;
+    let atTop = false;
+    const later = () => {
+      clearTimeout(idle);
+      idle = window.setTimeout(() => {
+        if (el.scrollTop >= 80 && !atTop) setChrome(false);
+      }, 3000);
+    };
     const onScroll = () => {
       const y = el.scrollTop;
-      if (y < 80 || y < lastY - 8) setChrome(true);
+      if (y < 80) setChrome(true);
+      else if (y < lastY - 8) (setChrome(true), later());
       else if (y > lastY + 8) setChrome(false);
       lastY = y;
       // Tell the background worker to hold off while scrolling (see main).
@@ -49,10 +60,15 @@ export function Reader({ onOpenFile, onLibrary }: { onOpenFile(): void; onLibrar
         platform.readerActivity();
       }
     };
-    const onMove = (e: MouseEvent) => e.clientY < 64 && setChrome(true);
+    const onMove = (e: MouseEvent) => {
+      atTop = e.clientY < 64 || e.clientY > window.innerHeight - 40;
+      if (atTop) setChrome(true);
+      else later();
+    };
     el.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("mousemove", onMove);
     return () => {
+      clearTimeout(idle);
       el.removeEventListener("scroll", onScroll);
       window.removeEventListener("mousemove", onMove);
     };
@@ -90,6 +106,9 @@ export function Reader({ onOpenFile, onLibrary }: { onOpenFile(): void; onLibrar
       } else if (e.key === "g") {
         e.preventDefault();
         setOverlay("glossary");
+      } else if (e.key === "f") {
+        e.preventDefault();
+        useSettings.getState().set({ focus: !useSettings.getState().focus });
       } else if (e.key === "r") {
         e.preventDefault();
         openRecap();
@@ -112,7 +131,7 @@ export function Reader({ onOpenFile, onLibrary }: { onOpenFile(): void; onLibrar
   return (
     <div className="relative h-full">
       <header
-        className={`fixed inset-x-0 top-0 z-30 flex h-12 items-center gap-1 border-b border-rule/70 bg-paper px-3 font-ui transition-transform duration-300 [-webkit-app-region:drag] ${showChrome ? "translate-y-0" : "-translate-y-full"} ${isMac && window.readingOS ? "pl-20" : ""}`}
+        className={`fixed inset-x-0 top-0 z-30 flex h-12 items-center gap-1 border-b border-rule/70 bg-paper px-3 font-ui duration-300 [-webkit-app-region:drag] ${showChrome ? "translate-y-0 opacity-100" : "-translate-y-full opacity-0"} transition-[transform,opacity] ${isMac && window.readingOS ? "pl-20" : ""}`}
       >
         <BarButton label="Library" onClick={onLibrary}>
           <IconLibrary />
@@ -139,6 +158,7 @@ export function Reader({ onOpenFile, onLibrary }: { onOpenFile(): void; onLibrar
       </div>
 
       <ReaderFooter visible={showChrome} />
+      <ChapterRail />
 
       <SelectionMenu scrollRoot={scrollRef} />
       <Hovercards root={scrollRef} />
@@ -177,8 +197,11 @@ function useProgress() {
     const b = book.blocks[i];
     const ch = book.chapters[b?.chapter ?? 0];
     const chEnd = Math.min(ch?.end ?? book.blocks.length, book.blocks.length);
-    const wordsLeft = (chEnd < book.blocks.length ? ix.wordsBefore[chEnd] : ix.totalWords) - ix.wordsBefore[i];
+    const chWordsEnd = chEnd < book.blocks.length ? ix.wordsBefore[chEnd] : ix.totalWords;
+    const wordsLeft = chWordsEnd - ix.wordsBefore[i];
+    const chStart = ix.wordsBefore[ch?.start ?? 0] ?? 0;
     return {
+      chapterPct: chWordsEnd > chStart ? Math.min(100, Math.max(0, ((ix.wordsBefore[i] - chStart) / (chWordsEnd - chStart)) * 100)) : 0,
       chapter: ch,
       percent: ix.totalWords ? Math.round((ix.wordsBefore[i] / ix.totalWords) * 100) : 0,
       minutesLeft: Math.max(0, Math.round(wordsLeft / WPM)),
@@ -202,6 +225,16 @@ function ReaderTitle() {
           {chapter.title}
         </span>
       )}
+    </div>
+  );
+}
+
+function ChapterRail() {
+  const { chapter, chapterPct } = useProgress();
+  if (!chapter) return null;
+  return (
+    <div className="chapter-rail" title={`${chapter.title} · ${Math.round(chapterPct)}% read`} aria-hidden>
+      <div style={{ height: `${chapterPct}%` }} />
     </div>
   );
 }

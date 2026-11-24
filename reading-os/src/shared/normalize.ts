@@ -3,7 +3,7 @@
 // shaped alike — numbered chapters, headings that never skip a level, one
 // style of heading text.
 
-import { blockText, spansText, type Block, type HeadingBlock, type Span } from "./model.ts";
+import { blockText, spansText, type Block, type HeadingBlock, type Span, type TitlePageBlock } from "./model.ts";
 
 const CHAPTER_LABEL = /^(?:chapter|chap\.|part|book|unit|lesson|module)\s+([0-9]{1,3}|[ivxlc]{1,7}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b[.:—–-]?\s*(.*)$/i;
 const NUMBERED = /^(\d{1,3})\.?\s+(\p{Lu}.{2,})$/u;
@@ -136,7 +136,8 @@ export function tidyOpening(blocks: Block[]): Block[] {
 
   const out: Block[] = [];
   const seen = new Set<string>();
-  let title: string | null = null;
+  const opening: { text: string; heading: boolean }[] = [];
+  let titlePage: TitlePageBlock | null = null;
   let folded: Block & { kind: "imprint" } | null = null;
   for (const b of blocks) {
     if (imprint.has(b.page) && b.kind !== "figure") {
@@ -154,29 +155,109 @@ export function tidyOpening(blocks: Block[]): Block[] {
       }
       continue;
     }
-    // The half-title page repeats the title page: show its lines once.
-    if (b.page < openingEnd && b.kind === "paragraph") {
-      const key = spansText(b.spans).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
-      if (key && seen.has(key)) continue;
-      seen.add(key);
-    }
-    if (b.page < openingEnd && b.kind === "heading") {
-      const key = b.text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
-      if (title === null) {
-        title = key;
-        seen.add(key);
-        out.push({ ...b, level: 1 });
+    // The title pages become one composed title page.
+    if (b.page < openingEnd && (b.kind === "heading" || b.kind === "paragraph" || b.kind === "list" || b.kind === "figure")) {
+      if (!titlePage) {
+        titlePage = { kind: "titlepage", id: b.id, page: b.page, rect: b.rect, chapter: b.chapter, title: "", details: [] };
+        out.push(titlePage);
+      }
+      if (b.kind === "figure") {
+        if (b.image && !titlePage.cover) titlePage.cover = b.image;
         continue;
       }
-      if (key === title) continue; // the half-title page
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push({ kind: "paragraph", id: b.id, page: b.page, rect: b.rect, chapter: b.chapter, spans: [{ text: b.text, b: b.level <= 2 }] });
+      for (const text of blockLines(b)) {
+        const key = text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+        if (!key || seen.has(key)) continue; // the half-title page repeats the title page
+        seen.add(key);
+        opening.push({ text, heading: b.kind === "heading" });
+      }
       continue;
     }
     out.push(b);
   }
+  if (titlePage) composeTitlePage(titlePage, opening);
   return out;
+}
+
+const EDITION = /\b(?:\d+(?:st|nd|rd|th)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|revised|new)\s+edition\b|\bedition\b|\bversion\s+\d/i;
+const BY_LINE = /^(?:(?:edited|written|compiled|illustrated)\s+)?by:?$|^editors?:?$|^authors?:?$/i;
+const NAME = /^(?:(?:Dr|Prof|Professor|Sir|Dame)\.?\s+)?\p{Lu}[\p{L}'’.-]*(?:\s+(?:(?:van|von|de|da|del|di|le|la|du|bin|al)\s+)?\p{Lu}[\p{L}'’.-]*){1,3}$/u;
+const PUBLISHER = /\b(?:press|publishing|publishers?|wiley|elsevier|springer|quintessence|thieme|mosby|saunders|lippincott|mcgraw|oxford|cambridge|routledge|penguin|harper|\bltd\b|\binc\b)/i;
+
+/** Names only: "Mark Greenwood | Ian Corbett", "Allen B. Downey". */
+export function isByline(line: string): boolean {
+  const parts = line
+    .replace(/^by\s+/i, "")
+    .split(/\s*(?:\||,|&|;|\band\b|·)\s*/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  return parts.length > 0 && parts.length <= 6 && parts.every((p) => NAME.test(p) && !PUBLISHER.test(p));
+}
+
+/** "Gary D. Klasser, DMD" → "Gary D. Klasser"; null when the line isn't a person. */
+export function personName(line: string): string | null {
+  const name = line.replace(/,?\s*(?:\b(?:[A-Z][A-Za-z]{0,3}\.?){1,4}(?:\s*\([A-Z]+\))?\s*,?\s*)+$/, (m) => (/[A-Z]{2}|PhD|MSc|BSc|MDSc|BDSc/.test(m) ? "" : m)).trim();
+  return NAME.test(name) && !PUBLISHER.test(name) ? name : null;
+}
+
+const SECTION_LABEL = /^(?:contributors?|contributing authors|with contributions? (?:from|by)|foreword by|illustrations? by|reviewers?):?$/i;
+const SPLIT_EDITION = /^(.{6,}?)[,:;–—-]\s*((?:[\p{L}\d]+\s+)?edition\b.*)$/iu;
+
+/** Title, subtitle, authors, edition and publisher from the title pages' lines. */
+function composeTitlePage(tp: TitlePageBlock, lines: { text: string; heading: boolean }[]): void {
+  const used = new Set<number>();
+  const take = (i: number) => (used.add(i), lines[i].text);
+  // The title is the first thing the title pages say (not a label, name or edition).
+  let titleAt = lines.findIndex((l) => !BY_LINE.test(l.text) && !EDITION.test(l.text) && !PUBLISHER.test(l.text) && l.text.length <= 140);
+  if (titleAt < 0) titleAt = 0;
+  // An author's name set above the title: the title is the heading just after it.
+  if (personName(lines[titleAt]?.text ?? "") && !lines[titleAt].heading && lines[titleAt + 1]?.heading) titleAt++;
+  tp.title = lines.length ? tidyHeading(take(titleAt)) : "";
+  const sub = lines[titleAt + 1];
+  if (sub && sub.text.length <= 160 && !BY_LINE.test(sub.text) && !SECTION_LABEL.test(sub.text) && !personName(sub.text) && !PUBLISHER.test(sub.text)) {
+    const split = SPLIT_EDITION.exec(sub.text);
+    if (split) {
+      used.add(titleAt + 1);
+      tp.subtitle = split[1].trim();
+      tp.edition = split[2].trim();
+    } else if (!EDITION.test(sub.text)) tp.subtitle = take(titleAt + 1);
+  }
+  if (!tp.edition) {
+    const ed = lines.findIndex((l, i) => !used.has(i) && EDITION.test(l.text) && l.text.length < 60);
+    if (ed >= 0) tp.edition = take(ed);
+  }
+  // Names: a line of names, or the people listed after "Edited by" / "Editors".
+  let names: string[] = [];
+  let collecting = false;
+  lines.forEach((l, i) => {
+    if (used.has(i)) return;
+    if (BY_LINE.test(l.text)) {
+      used.add(i);
+      if (/edit/i.test(l.text)) tp.edited = true;
+      collecting = !names.length;
+      return;
+    }
+    if (SECTION_LABEL.test(l.text)) {
+      collecting = false;
+      return;
+    }
+    const person = personName(l.text);
+    if (collecting && person) {
+      names.push(person);
+      used.add(i);
+      return;
+    }
+    if (collecting && names.length) collecting = false;
+    if (!names.length && isByline(l.text)) {
+      names = l.text.replace(/^by\s+/i, "").split(/\s*(?:\||&|;|·|\band\b)\s*/).filter(Boolean);
+      used.add(i);
+    } else if (!tp.publisher && PUBLISHER.test(l.text) && l.text.length < 80) tp.publisher = take(i);
+  });
+  if (names.length) tp.byline = [...new Set(names)].join(" · ");
+  if (tp.subtitle) tp.subtitle = tidyHeading(tp.subtitle);
+  if (tp.edition) tp.edition = tidyHeading(tp.edition);
+  // Everything else (affiliations, degrees, contributors) stays, quietly, behind a fold.
+  tp.details = lines.filter((_, i) => !used.has(i)).map((l) => l.text);
 }
 
 const ADDRESS = /^(?:https?:\/\/|\/\/|www\.)\S+$|^[\w.-]+\.(?:com|org|net|edu|io|gov|ac\.uk|co\.uk)(?:\/\S*)?\.?$/i;
@@ -259,4 +340,58 @@ function joinSpans(into: Span[], more: Span[]): void {
   if (last && /\p{Ll}-$/u.test(last.text)) last.text = last.text.slice(0, -1); // a line-break hyphen
   else if (last && !/\s$/.test(last.text)) into.push({ text: " " });
   for (const s of more) into.push({ ...s, text: into.length && s === more[0] ? s.text.replace(/^\s+/, "") : s.text });
+}
+
+/**
+ * A figure sits right after the paragraph that first mentions it — not
+ * wherever the page layout happened to put it — as long as that mention is
+ * close by (within two pages) and in the same chapter. Needs links (xref).
+ */
+export function placeFigures(blocks: Block[]): Block[] {
+  const mention = new Map<string, number>();
+  blocks.forEach((b, i) => {
+    const spans = b.kind === "paragraph" ? b.spans : b.kind === "list" ? b.items.flat() : [];
+    for (const s of spans) if (s.xref && !mention.has(s.xref)) mention.set(s.xref, i);
+  });
+  const chapterAt: number[] = [];
+  let ch = 0;
+  blocks.forEach((b, i) => {
+    if (b.kind === "heading" && b.level === 1) ch++;
+    chapterAt[i] = ch;
+  });
+  const moving = new Map<number, number>(); // figure index → mention index
+  blocks.forEach((b, i) => {
+    if (b.kind !== "figure" || !b.key) return;
+    const m = mention.get(b.key);
+    if (m === undefined || m === i - 1) return;
+    if (Math.abs(blocks[m].page - b.page) > 2 || chapterAt[m] !== chapterAt[i]) return;
+    // Already shortly after its mention, past only other figures: leave it.
+    if (i > m && blocks.slice(m + 1, i).every((x) => x.kind === "figure" || x.kind === "table")) return;
+    moving.set(i, m);
+  });
+  if (!moving.size) return blocks;
+  const after = new Map<number, Block[]>();
+  for (const [f, m] of moving) after.set(m, [...(after.get(m) ?? []), blocks[f]]);
+  const out: Block[] = [];
+  blocks.forEach((b, i) => {
+    if (moving.has(i)) return;
+    out.push(b);
+    const figs = after.get(i);
+    if (figs) out.push(...figs);
+  });
+  return out;
+}
+
+/**
+ * The book's name: the file's own title, unless the title page says
+ * otherwise (PDF metadata often holds a chapter name, like "Preface").
+ */
+export function bookTitle(blocks: Block[], metaTitle: string | undefined): string | undefined {
+  const tp = blocks.find((b): b is TitlePageBlock => b.kind === "titlepage");
+  const page = tp?.title?.trim();
+  const meta = metaTitle?.trim();
+  if (!page) return meta || undefined;
+  const n = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+  if (meta && n(meta).includes(n(page))) return meta;
+  return tp?.subtitle && page.length < 30 ? `${page}: ${tp.subtitle}`.slice(0, 120) : page;
 }

@@ -7,7 +7,6 @@ import { useNotes } from "../state/notes";
 import { useReader } from "../state/reader";
 import { FONTS, useSettings, type FontChoice, type Theme } from "../state/settings";
 import { IconX } from "../ui/icons";
-import { BookImage, PageCrop, useZoom } from "./BlockView";
 
 export function TocSheet() {
   const book = useReader((s) => s.book)!;
@@ -234,6 +233,7 @@ function PageTab() {
       <Switch label="Justify text" hint="Straight right edge" value={s.justify} onChange={(v) => s.set({ justify: v })} />
       {isPdf && <Switch label="Page numbers in margin" hint="The printed page numbers" value={s.pageNumbers} onChange={(v) => s.set({ pageNumbers: v })} />}
       <Switch label="Underline glossary terms" hint="Hover one for its definition" value={s.glossaryMarks} onChange={(v) => s.set({ glossaryMarks: v })} />
+      <Switch label="Focus mode" hint="Dim everything but the paragraph you're reading · F" value={s.focus} onChange={(v) => s.set({ focus: v })} />
     </div>
   );
 }
@@ -367,28 +367,3 @@ function IndexLine({ models, embedModel }: { models: string[] | null; embedModel
 
 
 
-export function ZoomOverlay() {
-  const target = useZoom((s) => s.target);
-  const set = useZoom((s) => s.set);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && set(null);
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [set]);
-  if (!target) return null;
-  const w = target.rect.x1 - target.rect.x0;
-  const h = target.rect.y1 - target.rect.y0;
-  const fit = Math.min((window.innerWidth - 80) / w, (window.innerHeight - 120) / h);
-  return (
-    <div className="fixed inset-0 z-[60] flex cursor-zoom-out flex-col items-center justify-center bg-black/75 p-8" onClick={() => set(null)} role="dialog" aria-label={target.title}>
-      <div className="rounded-md bg-white p-3 shadow-2xl">
-        {target.image ? (
-          <BookImage image={target.image} alt={target.title} className="max-h-[calc(100vh-140px)] w-auto object-contain" />
-        ) : (
-          <PageCrop page={target.page} rect={target.rect} alt={target.title} maxWidth={w * fit} scale={fit} />
-        )}
-      </div>
-      <div className="mt-3 font-ui text-[13px] text-white/80">{target.title} · click or press Esc to close</div>
-    </div>
-  );
-}

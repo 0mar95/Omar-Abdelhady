@@ -1,15 +1,18 @@
 // The reflowed reading view: the whole book as clean, typographic text, with
 // AI cards woven in under the paragraphs they explain.
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MarginNote } from "../../../shared/ipc";
 import type { Block } from "../../../shared/model";
 import { contextFor, useCards, type Card } from "../ai";
+import { paintHighlights, useHighlights, type Highlight } from "../state/highlights";
 import { useNotes } from "../state/notes";
 import { useReader } from "../state/reader";
 import { FONTS, useSettings } from "../state/settings";
-import { BlockView } from "./BlockView";
+import { BlockView, ChapterList, TitlePage } from "./BlockView";
 import { InlineCard } from "./InlineCard";
+import { outlineOf } from "./outline";
+import { FigureDock } from "./Viewers";
 import { GutterNote, InlineNote } from "./MarginNote";
 
 /** Memoized: the reader's bars and progress update while scrolling without re-rendering the book. */
@@ -21,6 +24,7 @@ export const CleanView = memo(function CleanView({ scrollRef }: { scrollRef: Rea
   const settings = useSettings();
   const notes = useNotes((s) => s.notes);
   const working = useNotes((s) => s.working);
+  const highlights = useHighlights((s) => s.list);
   const lastReported = useRef<string | null>(null);
   const articleRef = useRef<HTMLElement>(null);
   const [gutter, setGutter] = useState(false);
@@ -35,6 +39,31 @@ export const CleanView = memo(function CleanView({ scrollRef }: { scrollRef: Rea
     ro.observe(art);
     return () => ro.disconnect();
   }, [scrollRef]);
+
+  useEffect(() => {
+    void useHighlights.getState().load(book.id);
+  }, [book.id]);
+  const marksByBlock = useMemo(() => {
+    const m = new Map<string, Highlight[]>();
+    for (const h of highlights) m.set(h.blockId, [...(m.get(h.blockId) ?? []), h]);
+    return m;
+  }, [highlights]);
+  // Paint after the blocks render (and again when they change).
+  useEffect(() => {
+    const art = articleRef.current;
+    if (!art) return;
+    let t = setTimeout(() => paintHighlights(art, highlights), 50);
+    // Blocks re-render (glossary marks, cards): paint again once they settle.
+    const mo = new MutationObserver(() => {
+      clearTimeout(t);
+      t = setTimeout(() => paintHighlights(art, highlights), 200);
+    });
+    if (highlights.length) mo.observe(art, { childList: true, subtree: true, characterData: true });
+    return () => {
+      clearTimeout(t);
+      mo.disconnect();
+    };
+  }, [highlights, book]);
 
   const cardsByBlock = useMemo(() => {
     const m = new Map<string, Card[]>();
@@ -122,17 +151,34 @@ export const CleanView = memo(function CleanView({ scrollRef }: { scrollRef: Rea
     "--reader-align": settings.justify ? "justify" : "left",
   } as React.CSSProperties;
 
+  // Every book opens with a composed title page, then its contents.
+  const opening = useMemo(() => {
+    const titlePage = book.blocks.find((b) => b.kind === "titlepage");
+    const hasContents = book.blocks.some((b) => b.kind === "contents");
+    const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+    // Without title pages, a first heading that just repeats the title would show twice.
+    const first = book.blocks[0];
+    const skip = !titlePage && first?.kind === "heading" && norm(first.text) === norm(book.title) ? first.id : null;
+    return { synth: !titlePage, afterId: titlePage?.id, list: !hasContents, skip };
+  }, [book]);
+
+  // Key points shown in a chapter opener aren't repeated where they were printed.
+  const pulled = useMemo(() => outlineOf(book, ix).pulled, [book, ix]);
+
   let prevPage = -1;
   return (
     <div className="reader px-6 pb-[40vh] pt-20 sm:px-12" style={style}>
-      <article ref={articleRef} className={`book ${settings.indent ? "indented" : ""} ${gutter ? "with-gutter" : ""}`} lang="en">
+      <article ref={articleRef} className={`book ${settings.indent ? "indented" : ""} ${gutter ? "with-gutter" : ""} ${settings.focus ? "focus" : ""}`} lang="en">
+        {opening.synth && <TitlePage b={{ title: "", details: [] }} />}
+        {opening.synth && opening.list && <ChapterList />}
         {book.blocks.map((b, i) => {
+          if (b.id === opening.skip || pulled.has(b.id)) return null;
           const label = settings.pageNumbers && b.page !== prevPage ? book.pages[b.page]?.label : undefined;
           prevPage = b.page;
           const attached = cardsByBlock.get(b.id);
           const note = settings.marginNotes && b.kind === "heading" ? notes.get(b.id) : undefined;
           const isWorking = settings.marginNotes && working === b.id;
-          return (
+          const block = (
             <BlockWithCards
               key={b.id}
               block={b}
@@ -143,11 +189,22 @@ export const CleanView = memo(function CleanView({ scrollRef }: { scrollRef: Rea
               note={note}
               working={isWorking}
               gutter={gutter}
+              marks={marksByBlock.get(b.id)}
             />
+          );
+          return b.id === opening.afterId && opening.list ? (
+            <Fragment key={b.id}>
+              {block}
+              <ChapterList />
+            </Fragment>
+          ) : (
+            block
           );
         })}
         <div className="blk mt-24 text-center font-ui text-sm text-ink-3">End of book</div>
       </article>
+      <FigureDock scrollRef={scrollRef} articleRef={articleRef} />
+      {settings.focus && <FocusStyle />}
     </div>
   );
 });
@@ -161,6 +218,7 @@ const BlockWithCards = memo(function BlockWithCards({
   note,
   working,
   gutter,
+  marks,
 }: {
   block: Block;
   label?: string;
@@ -170,16 +228,24 @@ const BlockWithCards = memo(function BlockWithCards({
   note?: MarginNote;
   working?: boolean;
   gutter: boolean;
+  marks?: Highlight[];
 }) {
   return (
     <>
       {gutter && <GutterNote note={note} working={!!working} level={block.kind === "heading" ? block.level : 2} />}
-      <BlockView b={block} pageLabel={label} flow={flow} />
+      <BlockView b={block} pageLabel={label} flow={flow} marks={marks} />
       {!gutter && <InlineNote note={note} />}
       {cards?.map((c) => <InlineCard key={c.id} card={c} onRegenerate={onRegenerate} />)}
     </>
   );
 });
+
+/** Focus mode: everything but the block being read is dimmed (a style rule, so the book never re-renders). */
+function FocusStyle() {
+  const current = useReader((s) => s.currentBlock);
+  if (!current) return null;
+  return <style>{`.book.focus [data-block="${CSS.escape(current)}"]{opacity:1}`}</style>;
+}
 
 /** Highlights search hits inside a block using the CSS Custom Highlight API. */
 function highlightIn(el: HTMLElement, query: string) {

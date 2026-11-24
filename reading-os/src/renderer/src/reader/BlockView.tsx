@@ -4,7 +4,10 @@
 
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { create } from "zustand";
-import type { Block, BookDoc, BoxBlock, ContentsBlock, ContentsEntry, FigureBlock, Span, TableBlock } from "../../../shared/model";
+import type { Block, BookDoc, BoxBlock, HeadingBlock, ContentsBlock, ContentsEntry, FigureBlock, Span, TableBlock, TitlePageBlock } from "../../../shared/model";
+import { useCover } from "../covers";
+import { useHighlights, type Highlight } from "../state/highlights";
+import { formatMinutes, outlineOf } from "./outline";
 import type { TermMatch } from "../../../shared/glossary/extract";
 import { imageUrl } from "../formats";
 import { renderRegion } from "../pdf";
@@ -186,7 +189,7 @@ function Figure({ b }: { b: FigureBlock }) {
       <button
         type="button"
         className="w-full cursor-zoom-in rounded-md bg-[var(--figure-bg)] p-2 shadow-[0_0_0_1px_var(--rule)]"
-        onClick={() => setZoom({ page: b.page, rect: b.rect, title: b.key ?? "Figure", image: b.image })}
+        onClick={() => setZoom({ page: b.page, rect: b.rect, title: b.key ?? "Figure", image: b.image, caption: stripKey(b.caption, b.key), chapter: b.chapter })}
         aria-label={`Enlarge ${b.key ?? "figure"}`}
       >
         <FigureImage b={b} />
@@ -201,7 +204,7 @@ function Figure({ b }: { b: FigureBlock }) {
   );
 }
 
-function stripKey(spans: Span[], key?: string): Span[] {
+export function stripKey(spans: Span[], key?: string): Span[] {
   if (!key || !spans.length) return spans;
   const first = spans[0];
   const re = new RegExp(`^\\s*${key.replace(/\s+/, "\\s*").replace("-", "\\s*-\\s*")}\\s*`);
@@ -209,10 +212,43 @@ function stripKey(spans: Span[], key?: string): Span[] {
   return spans;
 }
 
-function Table({ b }: { b: TableBlock }) {
-  const [original, setOriginal] = useState(b.rows.length === 0);
+/** The table itself: header row stays put while the body scrolls; the first column too, when wide. */
+export function TableGrid({ b, full }: { b: TableBlock; full?: boolean }) {
   const head = b.rows.slice(0, b.headerRows);
   const body = b.rows.slice(b.headerRows);
+  const wide = Math.max(0, ...b.rows.map((r) => r.length)) >= 5;
+  return (
+    <div className={`table-box scroll-quiet ${full ? "full" : ""} ${wide ? "wide" : ""}`}>
+      <table>
+        {head.length > 0 && (
+          <thead>
+            {head.map((r, i) => (
+              <tr key={i}>
+                {r.map((c, k) => (
+                  <th key={k}>{c}</th>
+                ))}
+              </tr>
+            ))}
+          </thead>
+        )}
+        <tbody>
+          {body.map((r, i) => (
+            <tr key={i}>
+              {r.map((c, k) => (
+                <td key={k}>{c}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function Table({ b }: { b: TableBlock }) {
+  const [original, setOriginal] = useState(b.rows.length === 0);
+  const setZoom = useZoom((s) => s.set);
+  const expand = () => setZoom({ page: b.page, rect: b.rect, title: b.key, table: b });
   return (
     <div className="my-8 font-ui" data-key={b.key}>
       <div className="mb-2 flex items-baseline gap-2 text-[0.82em] leading-snug">
@@ -220,15 +256,18 @@ function Table({ b }: { b: TableBlock }) {
         <span className="text-ink-2">
           <Spans spans={b.caption} chapter={b.chapter} />
         </span>
-        {b.rows.length > 0 && b.parts.length > 0 && (
-          <button
-            type="button"
-            onClick={() => setOriginal((v) => !v)}
-            className="ml-auto shrink-0 rounded-full border border-rule px-2.5 py-0.5 text-[0.85em] text-ink-3 hover:border-accent hover:text-accent"
-          >
-            {original ? "Reflowed" : "Original"}
-          </button>
-        )}
+        <span className="ml-auto flex shrink-0 gap-1.5">
+          {b.rows.length > 0 && b.parts.length > 0 && (
+            <button type="button" onClick={() => setOriginal((v) => !v)} className="table-chip">
+              {original ? "Reflowed" : "As printed"}
+            </button>
+          )}
+          {!original && b.rows.length > 0 && (
+            <button type="button" onClick={expand} className="table-chip" title="Open the table full screen">
+              Expand
+            </button>
+          )}
+        </span>
       </div>
       {original ? (
         <div className="flex flex-col items-center gap-2 rounded-md bg-[var(--figure-bg)] p-2 shadow-[0_0_0_1px_var(--rule)]">
@@ -237,34 +276,7 @@ function Table({ b }: { b: TableBlock }) {
           ))}
         </div>
       ) : (
-        <div className="scroll-quiet overflow-x-auto rounded-md shadow-[0_0_0_1px_var(--rule)]">
-          <table className="w-full border-collapse text-[0.78em] leading-snug">
-            {head.length > 0 && (
-              <thead>
-                {head.map((r, i) => (
-                  <tr key={i} className="bg-paper-2">
-                    {r.map((c, k) => (
-                      <th key={k} className="whitespace-pre-line border-b border-rule px-3 py-2 text-left align-bottom font-semibold text-ink">
-                        {c}
-                      </th>
-                    ))}
-                  </tr>
-                ))}
-              </thead>
-            )}
-            <tbody>
-              {body.map((r, i) => (
-                <tr key={i} className="border-b border-rule/70 last:border-0 even:bg-paper-2/40">
-                  {r.map((c, k) => (
-                    <td key={k} className={`whitespace-pre-line px-3 py-2 align-top ${k === 0 ? "font-medium text-ink" : "text-ink-2"}`}>
-                      {c}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <TableGrid b={b} />
       )}
       {b.notes.length > 0 && (
         <div className="mt-2 space-y-1 text-[0.72em] leading-snug text-ink-3">
@@ -355,21 +367,120 @@ function Contents({ b }: { b: ContentsBlock }) {
   );
 }
 
+/**
+ * Every book opens the same way: cover, title, subtitle, authors, edition and
+ * publisher, composed — whatever its title pages looked like.
+ */
+export function TitlePage({ b }: { b: Pick<TitlePageBlock, "title" | "subtitle" | "byline" | "edited" | "edition" | "publisher" | "details"> }) {
+  const book = useReader((s) => s.book)!;
+  const cover = useCover(book.id);
+  const title = b.title || book.title;
+  const byline = b.byline || book.author;
+  const meta = [b.edition, b.publisher].filter(Boolean).join(" · ");
+  return (
+    <header className="title-page font-ui">
+      {cover && <img src={cover} alt="" className="cover" draggable={false} />}
+      <h1 className="title">{title}</h1>
+      {b.subtitle && <p className="subtitle">{b.subtitle}</p>}
+      <span className="rule" aria-hidden />
+      {byline && (
+        <p className="byline">
+          {b.edited && <span className="label">Edited by</span>}
+          {byline.split(/\s*\|\s*/).join(" · ")}
+        </p>
+      )}
+      {meta && <p className="meta">{meta}</p>}
+      {b.details.length > 0 && (
+        <details className="more">
+          <summary>From the title page</summary>
+          {b.details.map((d, i) => (
+            <p key={i}>{d}</p>
+          ))}
+        </details>
+      )}
+    </header>
+  );
+}
+
+/** For books without a contents page of their own: the chapters, one click away. */
+export function ChapterList() {
+  const book = useReader((s) => s.book)!;
+  const chapters = book.chapters.filter((c) => c.title !== "Front matter");
+  if (chapters.length < 2) return null;
+  return (
+    <nav aria-label="Chapters" className="mb-16">
+      <h2 className="!mt-0">Contents</h2>
+      <ol className="contents font-ui text-[0.88em]">
+        {chapters.map((c, i) => (
+          <li key={i} className={c.number ? "chapter" : undefined}>
+            <button type="button" onClick={() => useReader.getState().jumpTo({ blockId: book.blocks[c.start].id })}>
+              <span className="num">{c.number}</span>
+              <span className="min-w-0 font-medium">{c.title}</span>
+              <span className="leader" aria-hidden />
+              <span className="pg">{book.pages[book.blocks[c.start].page]?.label}</span>
+            </button>
+          </li>
+        ))}
+      </ol>
+    </nav>
+  );
+}
+
+/** A chapter's first page: number, title, authors, reading time, key points and sections. */
+function ChapterOpener({ b }: { b: HeadingBlock }) {
+  const book = useReader((s) => s.book)!;
+  const ix = useReader((s) => s.ix)!;
+  const o = outlineOf(book, ix).byHeading.get(b.id);
+  return (
+    <header className="chapter-opener">
+      {b.number && <div className="num">{b.number}</div>}
+      <h1 id={b.id}>{b.text}</h1>
+      {o?.authors && <p className="authors">{o.authors}</p>}
+      {o && (
+        <p className="meta">
+          {formatMinutes(o.minutes)}
+          {o.sections.length > 0 && ` · ${o.sections.length} sections`}
+        </p>
+      )}
+      {o?.keyPoints && (
+        <aside className="key-points">
+          <div className="label">
+            <IconBulb size={15} /> {o.keyPoints.title}
+          </div>
+          <ul>
+            {o.keyPoints.items.map((it, i) => (
+              <li key={i}>
+                <Spans spans={it} chapter={b.chapter} />
+              </li>
+            ))}
+          </ul>
+        </aside>
+      )}
+      {o && o.sections.length > 0 && (
+        <nav className="in-chapter" aria-label="In this chapter">
+          <div className="label">In this chapter</div>
+          <ol>
+            {o.sections.map((s) => (
+              <li key={s.id}>
+                <button type="button" onClick={() => useReader.getState().jumpTo({ blockId: s.id })}>
+                  {s.text}
+                </button>
+              </li>
+            ))}
+          </ol>
+        </nav>
+      )}
+    </header>
+  );
+}
+
 function BlockInner({ b }: { b: Block }) {
   // Glossary terms are marked at their first mention in each section.
   const allow = useGlossary((g) => g.allowed.get(b.id));
   const seen: TermMarks = { allow: allow ?? EMPTY, done: new Set() };
   switch (b.kind) {
     case "heading":
-      if (b.level === 1)
-        return (
-          <header className="mb-10 mt-16 first:mt-4">
-            {b.number && <div className="font-ui text-[3.2em] font-light leading-none tracking-tight text-accent">{b.number}</div>}
-            <h1 id={b.id} className="mt-3 font-ui text-[2em] font-semibold leading-[1.15] tracking-tight">
-              {b.text}
-            </h1>
-          </header>
-        );
+      if (b.level === 1) return <ChapterOpener b={b} />;
       if (b.level === 2) return <h2 id={b.id}>{b.text}</h2>;
       if (b.level === 3) return <h3 id={b.id}>{b.text}</h3>;
       return <h4 id={b.id}>{b.text}</h4>;
@@ -442,6 +553,8 @@ function BlockInner({ b }: { b: Block }) {
       );
     case "contents":
       return <Contents b={b} />;
+    case "titlepage":
+      return <TitlePage b={b} />;
     case "imprint":
       return (
         <details className="group my-8 rounded-lg border border-rule font-ui">
@@ -468,9 +581,10 @@ function BlockInner({ b }: { b: Block }) {
 }
 
 /** flow: "jp" when a paragraph follows a paragraph, "jn" when one comes next (book-style indents). */
-export const BlockView = memo(function BlockView({ b, pageLabel, flow }: { b: Block; pageLabel?: string; flow?: string }) {
+export const BlockView = memo(function BlockView({ b, pageLabel, flow, marks }: { b: Block; pageLabel?: string; flow?: string; marks?: Highlight[] }) {
   return (
     <>
+      {marks && marks.length > 0 && <HighlightMark marks={marks} />}
       {pageLabel && (
         // A zero-height sibling: blocks clip their own overflow (content-visibility).
         <div className="page-anchor" aria-hidden>
@@ -486,8 +600,30 @@ export const BlockView = memo(function BlockView({ b, pageLabel, flow }: { b: Bl
   );
 });
 
+/** A highlight's mark in the margin column; click it to see or remove the highlight. */
+function HighlightMark({ marks }: { marks: Highlight[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="hl-anchor">
+      <button type="button" className="hl-mark" aria-label="Highlights here" title="Highlighted" onClick={() => setOpen((v) => !v)} />
+      {open && (
+        <div className="hl-pop font-ui" onMouseLeave={() => setOpen(false)}>
+          {marks.map((h) => (
+            <div key={h.id} className="flex items-start gap-2">
+              <p className="line-clamp-3 min-w-0 flex-1">“{h.text}”</p>
+              <button type="button" className="shrink-0 text-ink-3 hover:text-[var(--accent)]" onClick={() => useHighlights.getState().remove(h.id)}>
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Figure zoom state lives here so figures can open it without prop drilling.
-type ZoomTarget = { page: number; rect: Block["rect"]; title: string; image?: string };
+export type ZoomTarget = { page: number; rect: Block["rect"]; title: string; image?: string; caption?: Span[]; chapter?: number; table?: TableBlock };
 export const useZoom = create<{
   target: ZoomTarget | null;
   set(t: ZoomTarget | null): void;

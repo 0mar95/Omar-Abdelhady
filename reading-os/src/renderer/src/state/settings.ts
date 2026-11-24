@@ -31,6 +31,8 @@ export interface Settings {
   spoilerLimit: boolean;
   /** Offer a recap when a book is reopened after a break. */
   catchUp: boolean;
+  /** Dim everything but the paragraph being read. */
+  focus: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -49,6 +51,7 @@ export const DEFAULT_SETTINGS: Settings = {
   glossaryMarks: true,
   spoilerLimit: false,
   catchUp: true,
+  focus: false,
 };
 
 interface SettingsStore extends Settings {

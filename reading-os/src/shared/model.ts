@@ -3,7 +3,7 @@
 // the page and rectangle it came from so the original page can always be shown.
 
 /** Bump whenever extraction output changes so cached books are re-extracted. */
-export const EXTRACTOR_VERSION = 11;
+export const EXTRACTOR_VERSION = 12;
 
 /** Rectangle in PDF points, origin at the top-left of the page. */
 export interface Rect {
@@ -141,6 +141,22 @@ export interface ContentsEntry {
   authors?: string;
 }
 
+/** The book's title pages, composed: title, subtitle, authors, edition, publisher. */
+export interface TitlePageBlock extends BlockBase {
+  kind: "titlepage";
+  title: string;
+  subtitle?: string;
+  byline?: string;
+  /** "Edited by" rather than "by". */
+  edited?: boolean;
+  edition?: string;
+  publisher?: string;
+  /** The rest of the title pages: affiliations, degrees, dedications. */
+  details: string[];
+  /** For books with image files (EPUB): the cover image. */
+  cover?: string;
+}
+
 /** The copyright and cataloguing page(s): kept, but folded away. */
 export interface ImprintBlock extends BlockBase {
   kind: "imprint";
@@ -165,7 +181,8 @@ export type Block =
   | IndexBlock
   | ContentsBlock
   | CodeBlock
-  | ImprintBlock;
+  | ImprintBlock
+  | TitlePageBlock;
 
 export interface PageInfo {
   w: number;
@@ -248,6 +265,8 @@ export function blockText(b: Block): string {
     case "code":
     case "imprint":
       return b.lines.join("\n");
+    case "titlepage":
+      return [b.title, b.subtitle, b.byline, b.edition, b.publisher, ...b.details].filter(Boolean).join("\n");
     case "contents":
       return b.entries.map((e) => [e.num, e.title, e.page].filter(Boolean).join(" ")).join("\n");
   }

@@ -41,8 +41,10 @@ async function pdfCover(doc: PDFDocumentProxy): Promise<string | null> {
 
 async function imageCover(book: BookDoc): Promise<string | null> {
   // EPUBs open with their cover image: the first image in the first two documents.
+  const tp = book.blocks.find((b) => b.kind === "titlepage");
   const fig = book.blocks.find((b) => b.kind === "figure" && b.image && b.page <= 1);
-  const src = fig?.kind === "figure" && fig.image ? imageUrl(fig.image) : undefined;
+  const image = tp?.kind === "titlepage" && tp.cover ? tp.cover : fig?.kind === "figure" ? fig.image : undefined;
+  const src = image ? imageUrl(image) : undefined;
   if (!src) return null;
   const img = new Image();
   img.src = src;

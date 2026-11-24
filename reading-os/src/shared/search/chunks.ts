@@ -73,6 +73,7 @@ export function buildChunks(book: BookDoc): Chunk[] {
       case "index":
       case "contents":
       case "imprint":
+      case "titlepage":
         return;
       case "references": {
         flush();

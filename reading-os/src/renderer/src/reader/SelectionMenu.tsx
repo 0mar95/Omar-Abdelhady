@@ -4,10 +4,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ACTIONS, contextFor, useCards, type ActionKind } from "../ai";
 import { useReader } from "../state/reader";
-import { IconBulb, IconCopy, IconFeather, IconList, IconQuestion, IconSparkle } from "../ui/icons";
+import { useHighlights } from "../state/highlights";
+import { IconBulb, IconCopy, IconFeather, IconList, IconMarker, IconQuestion, IconSparkle } from "../ui/icons";
 
 interface Sel {
   text: string;
+  /** The selected text inside the block it ends in (a highlight stays within one block). */
+  inBlock: string;
   blockId: string;
   rect: DOMRect;
 }
@@ -21,23 +24,10 @@ const ICONS: Record<ActionKind, React.ReactNode> = {
 };
 
 /** Finds the block a selection belongs to (by its end, where the card goes). */
-function blockForSelection(range: Range, text: string): string | null {
+function blockForSelection(range: Range): string | null {
   const node = range.endContainer.nodeType === 1 ? (range.endContainer as Element) : range.endContainer.parentElement;
   const blockEl = node?.closest("[data-block]");
-  if (blockEl) return blockEl.getAttribute("data-block");
-  // Page view: match the selected text against the blocks of that page.
-  const pageEl = node?.closest("[data-pdf-page]");
-  const { book, ix } = useReader.getState();
-  if (!pageEl || !book || !ix) return null;
-  const page = Number(pageEl.getAttribute("data-pdf-page"));
-  const probe = text.replace(/\s+/g, " ").slice(0, 40).toLowerCase();
-  let first: string | null = null;
-  for (let i = ix.pageFirstBlock[page]; i < book.blocks.length && book.blocks[i].page <= page; i++) {
-    if (book.blocks[i].page !== page) continue;
-    first ??= book.blocks[i].id;
-    if (ix.texts[i].replace(/\s+/g, " ").toLowerCase().includes(probe)) return book.blocks[i].id;
-  }
-  return first;
+  return blockEl?.getAttribute("data-block") ?? null;
 }
 
 export function SelectionMenu({ scrollRoot }: { scrollRoot: React.RefObject<HTMLElement | null> }) {
@@ -57,11 +47,15 @@ export function SelectionMenu({ scrollRoot }: { scrollRoot: React.RefObject<HTML
     if (!root || !root.contains(range.commonAncestorContainer)) return;
     const text = s.toString().trim();
     if (text.length < 2) return;
-    const blockId = blockForSelection(range, text);
+    const blockId = blockForSelection(range);
     if (!blockId) return;
+    const blockEl = root.querySelector(`[data-block="${CSS.escape(blockId)}"]`);
+    const clipped = range.cloneRange();
+    if (blockEl && !blockEl.contains(range.startContainer)) clipped.setStart(blockEl, 0);
+    const inBlock = clipped.toString().trim();
     const rects = range.getClientRects();
     const rect = rects.length ? rects[0] : range.getBoundingClientRect();
-    setSel({ text, blockId, rect });
+    setSel({ text, inBlock, blockId, rect });
   }, [asking, scrollRoot]);
 
   useEffect(() => {
@@ -96,7 +90,7 @@ export function SelectionMenu({ scrollRoot }: { scrollRoot: React.RefObject<HTML
   };
 
   if (!sel) return null;
-  const width = asking ? 380 : 470;
+  const width = asking ? 380 : 580;
   const left = Math.min(window.innerWidth - width - 12, Math.max(12, sel.rect.left + sel.rect.width / 2 - width / 2));
   const above = sel.rect.top > 70;
   const top = above ? sel.rect.top - 50 : sel.rect.bottom + 10;
@@ -133,6 +127,21 @@ export function SelectionMenu({ scrollRoot }: { scrollRoot: React.RefObject<HTML
         </form>
       ) : (
         <>
+          <button
+            type="button"
+            onClick={() => {
+              useHighlights.getState().add(sel.blockId, sel.inBlock);
+              window.getSelection()?.removeAllRanges();
+              setSel(null);
+            }}
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 hover:bg-white/10"
+          >
+            <span className="text-[#f2c66d]">
+              <IconMarker size={15} />
+            </span>
+            Highlight
+          </button>
+          <span className="mx-0.5 h-5 w-px bg-white/15" />
           {(Object.keys(ACTIONS) as ActionKind[]).map((k) => (
             <button
               key={k}

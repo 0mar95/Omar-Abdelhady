@@ -10,7 +10,7 @@ import {
   type Span,
   type TocEntry,
 } from "../model.ts";
-import { normalizeStructure } from "../normalize.ts";
+import { bookTitle, normalizeStructure, placeFigures } from "../normalize.ts";
 import { BlockBuilder, colFor, type HeadingStyles, type Item } from "./blocks.ts";
 import { detectLayout, dominantLayout, findFurniture, fitLayout, lineRect, readingOrder, splitAtGutter, type PageLayout } from "./layout.ts";
 import { buildLines, fontStats, lineFromRuns, removeNoise, type FontStats, type Line } from "./lines.ts";
@@ -85,8 +85,9 @@ export function analyzeBook(raw: RawPage[], meta: BookMeta, startedAt = Date.now
   );
   chaptersFromContents(blocks, pageInfos);
   blocks = normalizeStructure(blocks);
-  const chapters = assignChapters(blocks);
   linkReferences(blocks, pageInfos);
+  blocks = placeFigures(blocks);
+  const chapters = assignChapters(blocks);
   const toc = buildToc(blocks);
 
   let words = 0;
@@ -96,7 +97,7 @@ export function analyzeBook(raw: RawPage[], meta: BookMeta, startedAt = Date.now
     version: EXTRACTOR_VERSION,
     format: "pdf",
     id: meta.id,
-    title: meta.title || guessTitle(blocks, meta.fileName),
+    title: bookTitle(blocks, meta.title) || guessTitle(blocks, meta.fileName),
     author: meta.author,
     fileName: meta.fileName,
     pageCount: pages.length,

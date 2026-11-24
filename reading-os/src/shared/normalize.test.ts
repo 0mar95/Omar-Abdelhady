@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Block, HeadingBlock, ParagraphBlock } from "./model.ts";
-import { normalizeStructure, tidyHeading } from "./normalize.ts";
+import { normalizeStructure, placeFigures, tidyHeading } from "./normalize.ts";
 
 const R = { x0: 0, y0: 0, x1: 0, y1: 0 };
 let n = 0;
@@ -76,11 +76,24 @@ describe("opening pages", () => {
     expect(out.some((b) => textOf(b) === ",")).toBe(false);
   });
 
-  it("keeps one title and turns the names on the title pages into text", () => {
-    const out = normalizeStructure([h("Dental Emergencies", 1, 0), h("Mark Greenwood | Ian Corbett", 1, 0), h("Dental Emergencies", 1, 2), h("Edited by", 3, 4), ...imprintPage, h("Introduction", 1, 8)]);
-    const heads = out.filter((b): b is HeadingBlock => b.kind === "heading").map((b) => b.text);
-    expect(heads).toEqual(["Dental Emergencies", "Introduction"]);
-    expect(out.some((b) => textOf(b) === "Mark Greenwood | Ian Corbett")).toBe(true);
+  it("composes the title pages: one title, the editors, the edition", () => {
+    const out = normalizeStructure([
+      h("Dental Emergencies", 1, 0),
+      p("edited by", 0),
+      h("Mark Greenwood | Ian Corbett", 1, 0),
+      h("Dental Emergencies", 1, 2),
+      h("Edited by", 3, 4),
+      p("Mark Greenwood", 4),
+      p("MDS, PhD, FDS, FRCS", 4),
+      p("Second Edition", 4),
+      p("A John Wiley & Sons, Ltd., Publication", 4),
+      ...imprintPage,
+      h("Introduction", 1, 8),
+    ]);
+    const tp = out[0];
+    expect(tp).toMatchObject({ kind: "titlepage", title: "Dental Emergencies", byline: "Mark Greenwood · Ian Corbett", edited: true, edition: "Second Edition", publisher: "A John Wiley & Sons, Ltd., Publication" });
+    expect(tp.kind === "titlepage" && tp.details).toEqual(["MDS, PhD, FDS, FRCS"]);
+    expect(out.filter((b): b is HeadingBlock => b.kind === "heading").map((b) => b.text)).toEqual(["Introduction"]);
   });
 
   it("leaves a preface before a late contents page alone", () => {
@@ -108,8 +121,53 @@ describe("web addresses", () => {
 });
 
 describe("title pages", () => {
-  it("shows lines repeated on the half-title page once", () => {
-    const out = normalizeStructure([p("Think Python", 0), p("2nd Edition", 0), p("Think Python", 2), p("2nd Edition", 2), p("Allen Downey", 2), p("Copyright © 2015 Allen Downey. All rights reserved.", 3), p("Printed in the USA. ISBN 1-2-3", 3)]);
-    expect(out.filter((b) => b.kind === "paragraph").map(textOf)).toEqual(["Think Python", "2nd Edition", "Allen Downey"]);
+  it("shows lines repeated on the half-title page once, with a subtitle", () => {
+    const out = normalizeStructure([p("Think Python", 0), p("How to Think Like a Computer Scientist", 0), p("2nd Edition, Version 2.4.1", 0), p("Think Python", 2), p("2nd Edition, Version 2.4.1", 2), p("Allen Downey", 2), p("Green Tea Press", 2), p("Copyright © 2015 Allen Downey. All rights reserved.", 3), p("Printed in the USA. ISBN 1-2-3", 3)]);
+    expect(out[0]).toMatchObject({ kind: "titlepage", title: "Think Python", subtitle: "How to Think Like a Computer Scientist", edition: "2nd Edition, Version 2.4.1", byline: "Allen Downey", publisher: "Green Tea Press", details: [] });
+    expect(out[1].kind).toBe("imprint");
+  });
+});
+
+describe("placeFigures", () => {
+  const fig = (key: string, page: number): Block => ({ kind: "figure", id: `f${n++}`, page, rect: R, chapter: 0, key, caption: [] }) as unknown as Block;
+  const mention = (key: string, page: number): ParagraphBlock => ({ ...p("See ", page), spans: [{ text: "See " }, { text: key, xref: key }, { text: "." }] });
+  it("moves a figure to just after its first mention", () => {
+    const f = fig("Fig 1-1", 2);
+    const out = placeFigures([f, p("Intro.", 2), mention("Fig 1-1", 3), p("More.", 3)]);
+    expect(out.map((b) => b.kind)).toEqual(["paragraph", "paragraph", "figure", "paragraph"]);
+  });
+  it("leaves a far-away figure where it is", () => {
+    const out = placeFigures([fig("Fig 1-1", 2), mention("Fig 1-1", 9)]);
+    expect(out[0].kind).toBe("figure");
+  });
+  it("does not move a figure into another chapter", () => {
+    const out = placeFigures([fig("Fig 1-1", 2), h("Chapter Two", 1, 3), mention("Fig 1-1", 3)]);
+    expect(out[0].kind).toBe("figure");
+  });
+});
+
+describe("title pages of an edited textbook", () => {
+  it("takes the title first, splits off the edition, and lists the editors", () => {
+    const out = normalizeStructure([
+      p("Orofacial Pain", 1),
+      p("Guidelines for Assessment, Diagnosis, and Management, Seventh Edition", 1),
+      h("American Academy of Orofacial Pain", 1, 2),
+      p("Editors", 2),
+      p("Gary D. Klasser, DMD", 2),
+      p("Marcela Romero Reyes, DDS, PhD", 2),
+      p("Contributors", 2),
+      p("Simon Akerman, PhD", 2),
+      p("SEVENTH EDITION", 3),
+      p("Copyright © 2024 Quintessence Publishing. All rights reserved.", 5),
+      p("ISBN 978-1-64724-123-4. Printed in the USA.", 5),
+    ]);
+    expect(out[0]).toMatchObject({
+      kind: "titlepage",
+      title: "Orofacial Pain",
+      subtitle: "Guidelines for Assessment, Diagnosis, and Management",
+      edition: "Seventh Edition",
+      edited: true,
+      byline: "Gary D. Klasser · Marcela Romero Reyes",
+    });
   });
 });

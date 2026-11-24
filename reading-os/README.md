@@ -56,6 +56,24 @@ Build an installer with `npm run dist:mac` or `npm run dist:win`.
 - Themes (light, sepia, dark, black), five reading fonts, size, line spacing,
   line length, justification and book-style indents.
 
+**Every book opens the same way** — a composed title page (cover, title,
+subtitle, authors, edition, publisher) and the contents; the copyright and
+cataloguing pages fold into one closed "Publication details" panel.
+Each chapter opens with its number, title, authors, reading time, its own key
+points or objectives, and a clickable list of its sections.
+
+**Figures and tables** — a figure sits right after the paragraph that first
+mentions it. Click one to open it full screen: zoom with the wheel, a pinch,
+double-click or + / −, and drag to pan. On a wide window the figure being
+discussed stays in the left margin while you read about it. Tables keep their
+header row in view as they scroll, and **Expand** opens them full screen.
+
+**Quiet reading** — the bars fade away while you read and come back when you
+scroll up or point at the top. **Focus mode** (F) dims everything but the
+paragraph you are on. Select text and choose **Highlight** to mark it; page
+numbers, highlights and AI notes share one margin column, and a slim rail at
+the window's edge shows how far through the chapter you are.
+
 **Other formats** — EPUB, Word (.docx), HTML, Markdown and plain text become
 the same kind of book as a PDF, so everything below works on them too:
 search, Ask, the glossary, margin notes and the inline AI. EPUB chapters follow
@@ -124,6 +142,7 @@ is cached locally, and the AI only talks to Ollama on `localhost`.
 | ⌘K / Ctrl K | Search, jump, commands, ask |
 | T | Table of contents |
 | G | Glossary (A–Z) |
+| F | Focus mode on / off |
 | R | Catch me up (recap of what you've read) |
 | [ / ] | Previous / next chapter |
 | ⌘+ / ⌘− | Text size |
