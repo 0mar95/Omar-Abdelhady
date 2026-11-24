@@ -64,6 +64,34 @@ export function normalizeStructure(input: Block[], totalWords?: number): Block[]
   blocks = headingOnlyPages(blocks);
   blocks = inlineAddresses(blocks);
   blocks = tidyOpening(blocks);
+  // Running headers set as "1 / Introduction" (or "/" then the section's name) repeat a heading.
+  {
+    const n = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+    const headingNames = new Set(blocks.flatMap((b) => (b.kind === "heading" ? [n(b.text)] : [])));
+    blocks = blocks.filter((b, i) => {
+      if (b.kind !== "paragraph") return true;
+      const t = spansText(b.spans).trim();
+      if (t === "/") return false;
+      const header = /^\d{0,3}\s*\/\s*(.{2,90})$/.exec(t);
+      if (header && headingNames.has(n(header[1]))) return false;
+      const prev = blocks[i - 1];
+      return !(prev?.kind === "paragraph" && spansText(prev.spans).trim() === "/" && headingNames.has(n(t)));
+    });
+  }
+  // "/ Arndt Happe, Gerd Körner" under a chapter title: the opener already names them (from the contents).
+  {
+    const n = (t: string) => t.toLowerCase().replace(/[^\p{L}]+/gu, "");
+    const known = new Set(blocks.flatMap((b) => (b.kind === "contents" ? b.entries.flatMap((e) => (e.authors ? [n(e.authors)] : [])) : [])));
+    if (known.size)
+      blocks = blocks.filter((b, i) => {
+        if (b.kind !== "paragraph") return true;
+        const m = CHAPTER_BY.exec(spansText(b.spans).trim());
+        const near = blocks.slice(Math.max(0, i - 2), i).some((x) => x.kind === "heading" && x.level === 1);
+        return !(m && near && known.has(n(m[2])));
+      });
+  }
+  // Panel letters from inside a figure ("a b", "a b c d") aren't text.
+  blocks = blocks.filter((b) => !(b.kind === "paragraph" && /^(?:[a-h]\s+){1,7}[a-h]$/.test(spansText(b.spans).trim())));
   blocks = stitchSentences(blocks);
 
   // The same heading twice in a row (a running title repeated) shows once.
@@ -187,6 +215,8 @@ export function tidyOpening(blocks: Block[]): Block[] {
 }
 
 const EDITION = /\b(?:\d+(?:st|nd|rd|th)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|revised|new)\s+edition\b|\bedition\b|\bversion\s+\d|^vol(?:ume|\.)\s*(?:\d+|[ivx]+|one|two|three|four|five|six|seven|eight|nine|ten)\b/i;
+/** Words in a degree list: "DDS", "PhD", "Dr med dent", "FRCS (OMFS)". */
+const DEGREE = /^(?:\(?[A-Z][A-Za-z]{0,5}\.?\)?|Dr|Prof|med|dent|dent\.|habil|rer|nat|PD|MSc|BSc|PhD|MDSc|BDSc)$/;
 /** Words that start a label, never a person's name ("Volume Two", "Part One"). */
 const NOT_A_NAME = /^(?:volume|vol\.?|part|book|edition|series|chapter|section|unit|module|appendix)\b/i;
 const BY_LINE = /^(?:(?:edited|written|compiled|illustrated)\s+)?by:?$|^editors?:?$|^authors?:?$/i;
@@ -205,6 +235,13 @@ export function isByline(line: string): boolean {
 
 /** "Gary D. Klasser, DMD" → "Gary D. Klasser"; null when the line isn't a person. */
 export function personName(line: string): string | null {
+  // "Arndt Happe, DDS, Dr med dent": the name, then a comma, then degrees.
+  const comma = line.indexOf(",");
+  if (comma > 0) {
+    const head = line.slice(0, comma).trim();
+    const rest = line.slice(comma + 1).trim();
+    if (NAME.test(head) && !PUBLISHER.test(head) && !NOT_A_NAME.test(head) && rest.split(/[\s,]+/).every((w) => !w || DEGREE.test(w))) return head;
+  }
   const name = line.replace(/,?\s*(?:\b(?:[A-Z][A-Za-z]{0,3}\.?){1,4}(?:\s*\([A-Z]+\))?\s*,?\s*)+$/, (m) => (/[A-Z]{2}|PhD|MSc|BSc|MDSc|BDSc/.test(m) ? "" : m)).trim();
   return NAME.test(name) && !PUBLISHER.test(name) && !NOT_A_NAME.test(name) ? name : null;
 }
@@ -228,7 +265,9 @@ function composeTitlePage(tp: TitlePageBlock, lines: { text: string; heading: bo
     const words = next.split(/\s+/);
     const dangling = SMALL_WORDS.has(tp.title.split(/\s+/).pop()!.toLowerCase());
     const fragment = words.length <= 2 && words.every((w) => /^\p{Lu}/u.test(w)) && tp.title.split(/\s+/).length + words.length <= 7;
-    if (!(dangling || fragment) || EDITION.test(next) || BY_LINE.test(next) || personName(next) || PUBLISHER.test(next)) break;
+    // "Techniques for Success with Implants" / "in the Esthetic Zone": a lower-case run-on.
+    const runOn = /^(?:in|of|for|and|with|on|to|at|from|the|a|an)\s/u.test(next) && words.length <= 6;
+    if (!(dangling || fragment || runOn) || EDITION.test(next) || BY_LINE.test(next) || personName(next) || PUBLISHER.test(next)) break;
     tp.title = `${tp.title} ${take(++titleAt)}`;
   }
   tp.title = tidyHeading(tp.title);
@@ -417,21 +456,32 @@ export function bookTitle(blocks: Block[], metaTitle: string | undefined): strin
 }
 
 const PAGE_NO = /^(?:\d{1,4}|[ivxlc]{1,7})$/i;
-const CHAPTER_BY = /^(\d{1,3})\s*[/|·–—-]\s*(\p{Lu}.+)$/u;
-const ENTRY_PAIRS = /(\S(?:.*?\S)??)\s+(\d{1,4}|[ivxlc]{1,7})(?=\s|$)/giu;
+/** "1 / Arndt Happe, Gerd Körner" or "/ Arndt Happe": a chapter's number and authors. */
+const CHAPTER_BY = /^(\d{1,3})?\s*\/\s*(\p{Lu}.+)$/u;
+const CONTENTS_WORD = /^(?:table of )?contents$/i;
 
 /**
  * Contents pages set like a magazine — each title on its own line, its page
- * number on the next, the chapter number and authors above ("2 / Arndt Happe")
- * — read as loose headings and numbers. Early in the book, a run of short
- * lines and page numbers like that becomes a proper contents block.
+ * number set apart, the chapter number and authors ("2 / Arndt Happe") on a
+ * line of their own — read as loose headings and numbers. Early in the book,
+ * a run of short lines and page numbers like that becomes a proper contents
+ * block. Page numbers go to the titles in order; author lines go with the
+ * title they belong to (the one above, unless the run opens with them).
  */
 export function recoverContents(input: Block[]): Block[] {
-  if (!input.length || input.some((b) => b.kind === "contents")) return input;
+  if (!input.length) return input;
+  // A contents block that caught only the first few lines carries on into the loose lines after it.
+  const startedAt = input.findIndex((b) => b.kind === "contents");
+  const started = startedAt >= 0 ? input[startedAt] : null;
+  if (started?.kind === "contents" && started.entries.length >= 6) return input;
   const firstPage = input[0].page;
   const textOf = (b: Block) => (b.kind === "heading" ? b.text : b.kind === "paragraph" ? spansText(b.spans) : "").replace(/\s+/g, " ").trim();
   const blocks = input;
-  for (let i = 0; i < blocks.length && blocks[i].page - firstPage <= 30; i++) {
+  // With a "Contents" heading early on, the contents start on its page.
+  const word = blocks.find((b) => b.page - firstPage <= 30 && CONTENTS_WORD.test(textOf(b)));
+  for (let i = started ? startedAt + 1 : 0; i < blocks.length && blocks[i].page - firstPage <= 30; i++) {
+    if (word && blocks[i].page < word.page) continue;
+    if (started && i > startedAt + 1) break;
     // Take the run: short headings/paragraphs, page numbers and "N / Authors" lines.
     let j = i;
     let numbers = 0;
@@ -443,33 +493,71 @@ export function recoverContents(input: Block[]): Block[] {
       j++;
     }
     if (j - i < 8 || numbers < 3) continue;
-    // Pair titles with page numbers, oldest title first.
-    const entries: ContentsEntry[] = [];
+    const entries: ContentsEntry[] = started?.kind === "contents" ? [...started.entries] : [];
     const waiting: ContentsEntry[] = [];
-    let label: { num: string; authors: string } | null = null;
+    let label: { num?: string; authors: string } | null = null;
+    let lastByline: ContentsEntry | null = null;
+    // The run ends with the last line that found a place in the contents.
+    let used = i - 1;
     for (let k = i; k < j; k++) {
       const t = textOf(blocks[k]);
       if (PAGE_NO.test(t)) {
         const e = waiting.shift();
-        if (e) e.page = t;
+        if (e) {
+          e.page = t;
+          used = k;
+        }
+        lastByline = null;
         continue;
       }
       const by = CHAPTER_BY.exec(t);
-      if (by && isByline(by[2].replace(/,\s*/g, " | "))) {
-        label = { num: by[1], authors: by[2] };
+      if (by) {
+        const prev = entries[entries.length - 1];
+        // The authors of the title just above (or, if the run opens with them, of the next title).
+        if (prev && !prev.authors && /^[\p{L}]/u.test(prev.title)) {
+          prev.authors = by[2].replace(/,\s*$/, "");
+          if (by[1]) prev.num = by[1];
+          used = k;
+          // Only a list ending in a comma runs onto the next line.
+          lastByline = /,\s*$/.test(by[2]) ? prev : null;
+        } else label = { num: by[1], authors: by[2] };
         continue;
       }
-      if (/^(?:table of )?contents$/i.test(t)) continue;
-      // Several entries on one line: "Foreword vii Preface viii Contributors x".
-      const pairs = [...t.matchAll(ENTRY_PAIRS)];
-      if (pairs.length >= 2 && pairs.reduce((a, m) => a + m[0].length, 0) >= t.replace(/\s/g, "").length * 0.8) {
-        for (const m of pairs) entries.push({ title: m[1], page: m[2] });
+      // An author list running onto a second line ("Vincent Fehmer, Irena Sailer").
+      if (lastByline && isByline(t.replace(/,\s*/g, " | "))) {
+        lastByline.authors = `${lastByline.authors}, ${t.replace(/,\s*$/, "")}`;
+        used = k;
+        if (!/,\s*$/.test(t)) lastByline = null;
+        continue;
+      }
+      lastByline = null;
+      if (CONTENTS_WORD.test(t)) continue;
+      // Small lines mixing titles and page numbers: "Foreword vii Preface" / "viii Contributors x".
+      const tokens = t.split(" ");
+      if (blocks[k].kind === "paragraph" && tokens.length <= 12 && tokens.some((w, n) => n > 0 && /^(?:\d{1,4}|[ivxlc]{1,7})$/.test(w)) && tokens.some((w) => /^\p{Lu}\p{L}{2,}/u.test(w))) {
+        let words: string[] = [];
+        used = k;
+        for (const w of tokens) {
+          if (/^(?:\d{1,4}|[ivxlc]{1,7})$/.test(w)) {
+            if (words.length) entries.push({ title: words.join(" "), page: w });
+            else {
+              const e = waiting.shift();
+              if (e) e.page = w;
+            }
+            words = [];
+          } else words.push(w);
+        }
+        if (words.length) {
+          const e: ContentsEntry = { title: words.join(" "), page: "" };
+          entries.push(e);
+          waiting.push(e);
+        }
         continue;
       }
       const tail = /^(.+?)\s+(\d{1,4})$/.exec(t);
       const e: ContentsEntry = tail && blocks[k].kind !== "heading" ? { title: tail[1], page: tail[2] } : { title: t, page: "" };
       if (label) {
-        e.num = label.num;
+        if (label.num) e.num = label.num;
         e.authors = label.authors;
         label = null;
       }
@@ -486,10 +574,18 @@ export function recoverContents(input: Block[]): Block[] {
     let up = 0;
     for (let k = 1; k < arabic.length; k++) if (arabic[k] >= arabic[k - 1]) up++;
     if (arabic.length > 2 && up < (arabic.length - 1) * 0.7) continue;
-    const first = blocks[i];
-    const contents: Block = { kind: "contents", id: first.id, page: first.page, rect: first.rect, chapter: first.chapter, entries: entries.filter((e) => e.page) };
-    // Keep a "Contents" heading just before the run as the title.
-    return [...blocks.slice(0, i), contents, ...blocks.slice(j)];
+    // Chapters with authors but no printed number take the next number in line.
+    let last = 0;
+    for (const e of paged) {
+      if (e.num && /^\d+$/.test(e.num)) last = Number(e.num);
+      else if (e.authors && last) e.num = String(++last);
+    }
+    j = used + 1;
+    const first = started ?? blocks[i];
+    const contents: Block = { kind: "contents", id: first.id, page: first.page, rect: first.rect, chapter: first.chapter, entries: paged };
+    if (started) return [...blocks.slice(0, startedAt), contents, ...blocks.slice(j)];
+    const keep = word && blocks.indexOf(word) >= i && blocks.indexOf(word) < j ? [word] : [];
+    return [...blocks.slice(0, i), ...keep, contents, ...blocks.slice(j)];
   }
   return input;
 }

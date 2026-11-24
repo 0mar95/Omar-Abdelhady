@@ -174,35 +174,41 @@ describe("title pages of an edited textbook", () => {
 
 describe("recoverContents", () => {
   it("builds a contents page from titles and page numbers on separate lines", () => {
+    // The order pdf.js reads Techniques for Success with Implants' contents in.
+    const it_ = (t: string, page = 3) => ({ ...p(t, page), spans: [{ text: t, i: true }] });
     const out = normalizeStructure([
-      h("Contents", 1, 4),
-      { ...p("Foreword vii Preface viii Contributors x", 4), spans: [{ text: "Foreword vii Preface viii Contributors x", i: true }] },
-      h("Introduction", 2, 4),
-      p("1", 4),
-      p("1 / Arndt Happe, Gerd Körner", 4),
-      h("Requirements", 2, 4),
-      p("17", 4),
-      p("2 / Arndt Happe", 4),
-      h("Microsurgery", 2, 4),
-      p("29", 4),
-      h("Records", 2, 5),
-      p("33", 5),
-      h("Summary", 2, 5),
-      p("40", 5),
-      p("‘Beauty is in the eye of the beholder’, it is said, and we have been hearing this old comment for many years.", 6),
+      p("Printed in China", 2),
+      it_("Foreword vii Preface viii Contributors x"),
+      h("Introduction", 2, 3),
+      it_("1"),
+      h("Contents", 1, 3),
+      p("1 / Arndt Happe, Gerd Körner", 3),
+      h("Requirements", 2, 3),
+      p("2 / Arndt Happe", 3),
+      h("Microsurgery", 2, 3),
+      it_("17"),
+      it_("29"),
+      p("3 / Arndt Happe, Gerd Körner", 3),
+      h("Immediate Implant Placement in the Esthetic Zone", 2, 3),
+      it_("39"),
+      p("/ Arndt Happe, Gerd Körner", 3),
+      h("Implant Position, Planning, and Esthetic Analysis", 2, 3),
+      it_("69"),
+      p("/ Arndt Happe, Christian Coachman, Tal Morr,", 3),
+      p("Vincent Fehmer, Irena Sailer", 3),
+      p("‘Beauty is in the eye of the beholder’, it is said, and we have been hearing this old comment for many years.", 9),
     ]);
     const c = out.find((b) => b.kind === "contents");
-    expect(c?.kind === "contents" && c.entries.map((e) => [e.num ?? "", e.title, e.page])).toEqual([
-      ["", "Foreword", "vii"],
-      ["", "Preface", "viii"],
-      ["", "Contributors", "x"],
-      ["", "Introduction", "1"],
-      ["1", "Requirements", "17"],
-      ["2", "Microsurgery", "29"],
-      ["", "Records", "33"],
-      ["", "Summary", "40"],
+    expect(c?.kind === "contents" && c.entries.map((e) => [e.num ?? "", e.title, e.page, e.authors ?? ""])).toEqual([
+      ["", "Foreword", "vii", ""],
+      ["", "Preface", "viii", ""],
+      ["", "Contributors", "x", ""],
+      ["1", "Introduction", "1", "Arndt Happe, Gerd Körner"],
+      ["2", "Requirements", "17", "Arndt Happe"],
+      ["3", "Microsurgery", "29", "Arndt Happe, Gerd Körner"],
+      ["4", "Immediate Implant Placement in the Esthetic Zone", "39", "Arndt Happe, Gerd Körner"],
+      ["5", "Implant Position, Planning, and Esthetic Analysis", "69", "Arndt Happe, Christian Coachman, Tal Morr, Vincent Fehmer, Irena Sailer"],
     ]);
-    expect(c?.kind === "contents" && c.entries[4].authors).toBe("Arndt Happe, Gerd Körner");
     expect(out.some((b) => b.kind === "paragraph" && textOf(b).startsWith("‘Beauty"))).toBe(true);
   });
 
@@ -241,5 +247,12 @@ describe("chapter labels with a caption in front", () => {
   it("keeps just the label", () => {
     const [first] = normalizeStructure([h("He rode a black horse. CHAPTER III.", 1), p("Text.")]);
     expect(first).toMatchObject({ kind: "heading", text: "Chapter III" });
+  });
+});
+
+describe("slash running headers", () => {
+  it("drops '1 / Introduction' and '/' + a section name", () => {
+    const out = normalizeStructure([h("Introduction", 1, 9), p("Text one.", 9), p("1 / Introduction", 10), p("More text.", 10), p("/", 11), p("Patient-Related Factors", 11), h("Patient-Related Factors", 2, 11), p("Body.", 11)]);
+    expect(out.map(textOf)).toEqual(["Introduction", "Text one.", "More text.", "Patient-Related Factors", "Body."]);
   });
 });

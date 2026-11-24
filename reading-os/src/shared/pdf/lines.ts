@@ -109,7 +109,7 @@ export function buildLines(page: RawPage, stats: FontStats): Line[] {
       continue;
     }
     // A large single letter opening a paragraph (drop cap).
-    if (/^[A-Z“"]$/.test(t) && r.size >= stats.bodySize * 1.8 && r.size <= stats.bodySize * 6) {
+    if (/^[A-Z“"]$/.test(t) && r.size >= stats.bodySize * 1.8 && r.size <= stats.bodySize * 12) {
       dropCaps.push(r);
       continue;
     }

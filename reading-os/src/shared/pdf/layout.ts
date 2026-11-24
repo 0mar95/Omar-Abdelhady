@@ -196,6 +196,7 @@ export interface Furniture {
 }
 
 const PAGE_NUM_RE = /^(?:page\s+)?(\d{1,4}|[ivxlcdm]{1,7})$/i;
+const SLUG_RE = /\.(?:indd|qxd|qxp|fm|tex)\b|\b\d{1,2}\/\d{1,2}\/\d{2,4}\b|\b\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)\b/i;
 
 /**
  * Running headers, footers and page numbers live in the top and bottom margins
@@ -206,11 +207,15 @@ export function findFurniture(pages: { lines: Line[]; h: number }[], stats: Font
   // inside a deep top margin), count as margins too.
   const edges = new Map<Line, "top" | "bottom">();
   for (const p of pages) {
-    const sorted = [...p.lines].sort((a, b) => a.top - b.top);
+    // (A printer's slug below the page number doesn't make the number any less the page's edge.)
+    // Nor does printer's type far smaller than the text (a slug's job number).
+    const slugRows = new Set(p.lines.filter((l) => SLUG_RE.test(l.text) || l.size < stats.bodySize * 0.68).map((l) => Math.round(l.y)));
+    const sorted = p.lines.filter((l) => !slugRows.has(Math.round(l.y))).sort((a, b) => a.top - b.top);
     const firstY = sorted[0]?.top;
     const top = sorted.filter((l) => Math.abs(l.top - firstY) < 2);
     const nextTop = sorted.find((l) => l.top > firstY + 2);
-    if (top.length && nextTop && top[0].bottom < p.h * 0.15 && nextTop.top - top[0].bottom > top[0].size * 1.2) for (const l of top) edges.set(l, "top");
+    const topSize = Math.min(...top.map((l) => l.size), stats.bodySize);
+    if (top.length && nextTop && top[0].bottom < p.h * 0.15 && nextTop.top - Math.max(...top.map((l) => l.bottom)) > topSize * 1.2) for (const l of top) edges.set(l, "top");
     const lastY = sorted[sorted.length - 1]?.top;
     const bottom = sorted.filter((l) => Math.abs(l.top - lastY) < 2);
     const prev = [...sorted].reverse().find((l) => l.top < lastY - 2);
@@ -231,16 +236,38 @@ export function findFurniture(pages: { lines: Line[]; h: number }[], stats: Font
   const drop = new Set<Line>();
   const labels = new Map<number, string>();
   pages.forEach((p, pi) => {
+    // A printer's slug ("Book_FM.indd 7  8/29/19  11:21 AM") is furniture, and its number isn't the page's.
+    const slugRows = new Set(p.lines.filter((l) => SLUG_RE.test(l.text)).map((l) => Math.round(l.y)));
+    let best: { text: string; size: number } | null = null;
     for (const l of p.lines) {
       const b = band(l, p.h);
       if (!b) continue;
       const text = l.text.trim();
-      const isNum = PAGE_NUM_RE.test(text) && l.size <= stats.bodySize * 1.3;
-      if (isNum || (counts.get(key(l, b)) ?? 0) >= minPages) {
+      const slug = slugRows.has(Math.round(l.y));
+      const isNum = PAGE_NUM_RE.test(text) && l.size <= stats.bodySize * 1.3 && l.size >= stats.bodySize * 0.68;
+      if (slug || isNum || (counts.get(key(l, b)) ?? 0) >= minPages) {
         drop.add(l);
-        if (isNum) labels.set(pi, text.replace(/^page\s+/i, ""));
+        if (isNum && !slug && (!best || l.size > best.size)) best = { text: text.replace(/^page\s+/i, ""), size: l.size };
       }
     }
+    // Some designs print the page number halfway down the outer margin, clear of the text.
+    const body = p.lines.filter((l) => l.text.trim().length > 20);
+    if (body.length >= 5) {
+      const left = Math.min(...body.map((l) => l.x0));
+      const right = Math.max(...body.map((l) => l.x1));
+      // Exactly one such number, alone on its line (numbers ending contents lines don't count).
+      const outer = p.lines.filter((l) => {
+        const text = l.text.trim();
+        if (!PAGE_NUM_RE.test(text) || l.size < stats.bodySize * 0.68 || l.size > stats.bodySize * 1.3) return false;
+        if (!(l.x1 < left - 15 || l.x0 > right + 15)) return false;
+        return !p.lines.some((o) => o !== l && Math.abs(o.y - l.y) < l.size && Math.max(o.x0 - l.x1, l.x0 - o.x1) < 20);
+      });
+      if (outer.length === 1) {
+        drop.add(outer[0]);
+        best ??= { text: outer[0].text.trim(), size: outer[0].size };
+      }
+    }
+    if (best) labels.set(pi, best.text);
   });
   return { drop, labels };
 }
@@ -258,9 +285,12 @@ export function readingOrder<T extends Placed>(items: T[], layout: PageLayout): 
   if (layout.gutter === undefined) return [...items].sort((a, b) => a.rect.y0 - b.rect.y0 || a.rect.x0 - b.rect.x0);
   const g = layout.gutter;
   const colOf = (it: T): 0 | 1 | -1 => (it.rect.x1 <= g + 3 ? 0 : it.rect.x0 >= g - 3 ? 1 : -1);
-  const spans = items.filter((it) => colOf(it) === -1).sort((a, b) => a.rect.y0 - b.rect.y0);
+  // Whatever sits above everything else (a title set over one column) is read first.
+  const lowestTop = (except: T) => Math.min(...items.filter((x) => x !== except).map((x) => x.rect.y0));
+  const leading = new Set(items.filter((it) => colOf(it) !== -1 && it.rect.y1 <= lowestTop(it) + 1));
+  const spans = items.filter((it) => colOf(it) === -1 || leading.has(it)).sort((a, b) => a.rect.y0 - b.rect.y0);
   const out: T[] = [];
-  let remaining = items.filter((it) => colOf(it) !== -1);
+  let remaining = items.filter((it) => colOf(it) !== -1 && !leading.has(it));
   const flushBand = (limitY: number) => {
     const band = remaining.filter((it) => it.rect.y0 < limitY);
     remaining = remaining.filter((it) => it.rect.y0 >= limitY);

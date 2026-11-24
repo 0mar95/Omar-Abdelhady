@@ -197,7 +197,8 @@ function pageLabels(pages: { w: number; h: number }[], found: Map<number, string
   const firstNumbered = Math.min(...[...numeric.keys()].filter((i) => offset && numeric.get(i)! - i === offset[0]));
   return pages.map((p, i) => {
     let label = found.get(i);
-    if (!label && offset && offset[1] >= 3 && i >= firstNumbered) label = String(i + offset[0]);
+    // (A chapter's opening page usually goes unnumbered: it takes the number before the first numbered page.)
+    if (!label && offset && offset[1] >= 3 && (i >= firstNumbered || (i === firstNumbered - 1 && i + offset[0] >= 1))) label = String(i + offset[0]);
     return { w: p.w, h: p.h, label: label ?? String(i + 1) };
   });
 }

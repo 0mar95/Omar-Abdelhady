@@ -3,7 +3,7 @@
 // the page and rectangle it came from so the original page can always be shown.
 
 /** Bump whenever extraction output changes so cached books are re-extracted. */
-export const EXTRACTOR_VERSION = 12;
+export const EXTRACTOR_VERSION = 13;
 
 /** Rectangle in PDF points, origin at the top-left of the page. */
 export interface Rect {

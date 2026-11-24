@@ -71,6 +71,8 @@ export class BlockBuilder {
   private heading: { lines: Line[]; level: 1 | 2 | 3 | 4 } | null = null;
   private pending: Region[] = [];
   private chapterNumber: string | undefined;
+  /** The page the pending chapter number was printed on: it only names a title on that page or the next. */
+  private chapterNumberPage = -1;
   private mode: Mode = "normal";
   private refs: { title: string; items: ReferenceEntry[]; page: number; rect: Rect } | null = null;
   private index: { title: string; lines: string[]; page: number; rect: Rect } | null = null;
@@ -224,6 +226,7 @@ export class BlockBuilder {
     if (/^\d{1,3}$/.test(text) && l.size >= this.stats.bodySize * 2) {
       this.flushAll();
       this.chapterNumber = text;
+      this.chapterNumberPage = l.page;
       return;
     }
 
@@ -247,6 +250,12 @@ export class BlockBuilder {
       case "references":
         return this.onReferenceLine(l);
       case "index":
+        // "Index 309" on a contents page is an entry pointing at the index, not the index.
+        if (this.index && !this.index.lines.length && /^\d{1,4}$/.test(text)) {
+          this.index = null;
+          this.mode = "normal";
+          return;
+        }
         this.index?.lines.push(text);
         if (this.index) this.index.rect = union(this.index.rect, lineRect(l));
         return;
@@ -526,7 +535,8 @@ export class BlockBuilder {
       chapter: 0,
       level: h.level,
       text,
-      number: h.level === 1 ? this.chapterNumber : undefined,
+      // The number belongs to a title on its own page, or to one opening the next page.
+      number: h.level === 1 && (first.page === this.chapterNumberPage || (first.page === this.chapterNumberPage + 1 && !this.perPage.has(first.page))) ? this.chapterNumber : undefined,
     });
     if (h.level === 1) this.chapterNumber = undefined;
   }
@@ -539,7 +549,13 @@ export class BlockBuilder {
     }
     if (this.index) {
       const x = this.index;
-      this.blocks.push({ kind: "index", id: this.id(x.page), page: x.page, rect: x.rect, chapter: 0, title: x.title, lines: x.lines });
+      // An index is terms and page numbers. Prose that ended up here is text, and stays readable.
+      const withNumbers = x.lines.filter((t) => /\d/.test(t)).length;
+      const avg = x.lines.reduce((a, t) => a + t.length, 0) / Math.max(1, x.lines.length);
+      if (x.lines.length >= 4 && withNumbers < x.lines.length * 0.3 && avg > 18) {
+        const text = x.lines.reduce((a, t) => (/\p{L}-$/u.test(a) ? a.slice(0, -1) + t : a ? `${a} ${t}` : t), "");
+        this.blocks.push({ kind: "paragraph", id: this.id(x.page), page: x.page, rect: x.rect, chapter: 0, spans: [{ text }] });
+      } else this.blocks.push({ kind: "index", id: this.id(x.page), page: x.page, rect: x.rect, chapter: 0, title: x.title, lines: x.lines });
       this.index = null;
     }
     this.contents = null;
