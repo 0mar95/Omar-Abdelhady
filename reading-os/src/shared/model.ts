@@ -3,7 +3,7 @@
 // the page and rectangle it came from so the original page can always be shown.
 
 /** Bump whenever extraction output changes so cached books are re-extracted. */
-export const EXTRACTOR_VERSION = 8;
+export const EXTRACTOR_VERSION = 9;
 
 /** Rectangle in PDF points, origin at the top-left of the page. */
 export interface Rect {
@@ -135,6 +135,8 @@ export interface ContentsEntry {
   title: string;
   /** The page label printed in the contents ("vi", "36"). */
   page: string;
+  /** Chapter authors, in edited books ("Bailoor DN, Nagesh KS"). */
+  authors?: string;
 }
 
 export type Block =

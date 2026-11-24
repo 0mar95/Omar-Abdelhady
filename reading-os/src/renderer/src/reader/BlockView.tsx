@@ -341,7 +341,10 @@ function Contents({ b }: { b: ContentsBlock }) {
         <li key={i}>
           <button type="button" disabled={!targets[i]} onClick={() => targets[i] && useReader.getState().jumpTo({ blockId: targets[i]! })}>
             <span className="num">{e.num}</span>
-            <span className={e.num ? "font-medium" : "text-ink-2"}>{e.title}</span>
+            <span className="min-w-0">
+              <span className={e.num ? "font-medium" : "text-ink-2"}>{e.title}</span>
+              {e.authors && <span className="mt-0.5 block text-[0.82em] font-normal italic text-ink-3">{e.authors}</span>}
+            </span>
             <span className="leader" aria-hidden />
             <span className="pg">{e.page}</span>
           </button>

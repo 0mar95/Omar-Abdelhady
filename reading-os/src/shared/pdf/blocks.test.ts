@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseContentsEntry } from "./blocks";
+import { isAuthorList, parseContentsEntry } from "./blocks";
 
 describe("parseContentsEntry", () => {
   it("reads numbered chapters with spacer glyphs or dot leaders", () => {
@@ -22,5 +22,23 @@ describe("parseContentsEntry", () => {
     expect(parseContentsEntry("this QR code.")).toBeNull();
     expect(parseContentsEntry("studies published in 2013")).toBeNull();
     expect(parseContentsEntry("2022")).toBeNull();
+  });
+
+  it("reads chapter authors after the page number", () => {
+    expect(parseContentsEntry("Cysts of the Oral Regions ........................ 159 Rawal Y, Bailoor DN")).toEqual({
+      num: undefined,
+      title: "Cysts of the Oral Regions",
+      page: "159",
+      authors: "Rawal Y, Bailoor DN",
+    });
+  });
+
+  it("tells author lines from titles", () => {
+    expect(isAuthorList("Bailoor DN, Nagesh KS, Chatra LK, Pai Keerthilatha")).toBe(true);
+    expect(isAuthorList("Krishna AP, Bailoor DN")).toBe(true);
+    expect(isAuthorList("Mark Greenwood and Ian Corbett")).toBe(true);
+    expect(isAuthorList("Systemically Compromised Dental Patients")).toBe(false);
+    expect(isAuthorList("The Diagnostic Sequence")).toBe(false);
+    expect(isAuthorList("Diagnosis and Management")).toBe(false);
   });
 });

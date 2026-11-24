@@ -82,6 +82,7 @@ export function analyzeBook(raw: RawPage[], meta: BookMeta, startedAt = Date.now
     pages.map((p) => ({ w: p.w, h: p.h })),
     furniture.labels,
   );
+  chaptersFromContents(blocks, pageInfos);
   const chapters = assignChapters(blocks);
   linkReferences(blocks, pageInfos);
   const toc = buildToc(blocks);
@@ -288,4 +289,55 @@ function guessTitle(blocks: Block[], fileName: string): string {
     .replace(/[_]+/g, " ")
     .trim();
   return base || (blocks.find((b) => b.kind === "heading")?.kind === "heading" ? (blocks.find((b) => b.kind === "heading") as { text: string }).text : "Untitled");
+}
+
+const normTitle = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+
+/**
+ * The book's own contents page says where each chapter starts. When the
+ * printed styles didn't reveal the chapters, the heading at each numbered
+ * entry's page becomes a chapter heading (level 1, with its number).
+ */
+export function chaptersFromContents(blocks: Block[], pages: PageInfo[]): void {
+  const contents = blocks.find((b) => b.kind === "contents");
+  if (!contents || contents.kind !== "contents") return;
+  const numbered = contents.entries.filter((e) => e.num);
+  if (numbered.length < 3) return;
+  const existing = blocks.filter((b) => b.kind === "heading" && b.level === 1 && b.page > contents.page).length;
+  // Styles already found most chapters: trust them.
+  if (existing >= numbered.length * 0.6) return;
+  const firstOnPage = new Map<number, number>();
+  blocks.forEach((b, i) => {
+    if (!firstOnPage.has(b.page)) firstOnPage.set(b.page, i);
+  });
+  let promoted = 0;
+  for (const e of numbered) {
+    const page = pages.findIndex((p, i) => i > contents.page && p.label === e.page);
+    if (page < 0) continue;
+    const start = firstOnPage.get(page);
+    if (start === undefined) continue;
+    const want = normTitle(e.title);
+    // The heading on that page (or the next) whose text matches the entry, else its first heading.
+    let pick = -1;
+    for (let i = start; i < blocks.length && blocks[i].page <= page + 1; i++) {
+      const b = blocks[i];
+      if (b.kind !== "heading") continue;
+      const t = normTitle(b.text);
+      if (t && (t === want || want.startsWith(t) || t.startsWith(want))) {
+        pick = i;
+        break;
+      }
+      if (pick < 0 && b.page === page) pick = i;
+    }
+    if (pick < 0) continue;
+    const h = blocks[pick];
+    if (h.kind !== "heading") continue;
+    h.level = 1;
+    h.number ??= e.num;
+    promoted++;
+  }
+  if (promoted < 3) return;
+  // Other top-level headings inside chapters step down a level.
+  const starts = new Set(blocks.filter((b) => b.kind === "heading" && b.level === 1 && b.number).map((b) => b.id));
+  for (const b of blocks) if (b.kind === "heading" && b.level === 1 && !starts.has(b.id) && b.page > contents.page) b.level = 2;
 }

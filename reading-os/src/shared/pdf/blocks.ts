@@ -241,7 +241,15 @@ export class BlockBuilder {
   }
 
   private onContentsLine(l: Line, col: Column): void {
-    let entry = parseContentsEntry(normalizeText(l.text).trim());
+    const text = normalizeText(l.text).trim();
+    let entry = parseContentsEntry(text);
+    // Edited books list each chapter's authors under its title.
+    const last = this.contents?.entries[this.contents.entries.length - 1];
+    if (!entry && last && (l.italic || isAuthorList(text))) {
+      last.authors = last.authors ? `${last.authors} ${text}` : text;
+      if (l.page === this.contents!.page) this.contents!.rect = union(this.contents!.rect, lineRect(l));
+      return;
+    }
     // Prose on a contents page ("The glossary is available online…") reads as ordinary text.
     if (!entry) return this.onBodyLine(l, col);
     // A long title wraps: its first line arrived as text just above, without a page number.
@@ -492,6 +500,7 @@ export class BlockBuilder {
     this.flushAll();
     this.closeMode();
     pullEntriesBeforeHeading(this.blocks);
+    continueContents(this.blocks);
     return this.blocks;
   }
 }
@@ -505,6 +514,13 @@ const ENTRY_RE = /^(.*?[^\s.·…!_⋯])(?:\s*(?:[.·…!_⋯•]\s*){2,}|\s+)(\
  * with dot leaders or spacer glyphs ("Pain!!1") between title and page.
  */
 export function parseContentsEntry(text: string): ContentsEntry | null {
+  // "Cysts of the Oral Regions ........ 159 Rawal Y, Bailoor DN": with dot
+  // leaders, the page number can be followed by the chapter's authors.
+  const lead = LEADER_AUTHORS_RE.exec(text);
+  if (lead && isAuthorList(lead[3])) {
+    const e = parseContentsEntry(`${lead[1]} ${lead[2]}`);
+    return e && { ...e, authors: lead[3] };
+  }
   const m = ENTRY_RE.exec(text);
   if (!m) return null;
   let title = m[1].trim();
@@ -514,6 +530,62 @@ export function parseContentsEntry(text: string): ContentsEntry | null {
   if (num) title = title.slice(num[0].length);
   if (!/\p{L}/u.test(title)) return null;
   return { num: num?.[1], title, page: m[2] };
+}
+
+const LEADER_AUTHORS_RE = /^(.*?[^\s.])\s*(?:[.·…]\s*){3,}(\d{1,4}|[ivxlcdm]{1,7})\s+(\S.*)$/;
+
+/** "Bailoor DN, Nagesh KS", "Rawal Y, Bailoor DN", "Mark Greenwood and Ian Corbett". */
+export function isAuthorList(text: string): boolean {
+  const parts = text.replace(/\s+and\s+/g, ", ").split(/\s*[,;]\s*/).filter(Boolean);
+  if (!parts.length || parts.length > 12) return false;
+  const name = /^(?:Dr\.?\s+)?[\p{Lu}][\p{L}'’.-]+(?:\s+[\p{Lu}][\p{L}'’.-]*){0,3}$/u;
+  if (!parts.every((p) => name.test(p))) return false;
+  // Each name has a surname with initials ("Bailoor DN") or a first and last name.
+  if (!parts.every((p) => /\s/.test(p))) return false;
+  const initials = (p: string) => /\s[\p{Lu}]{1,3}\.?$/u.test(p);
+  return parts.some(initials) || parts.length >= 2;
+}
+
+/**
+ * Contents that run onto the next page often lose their mode at that page's
+ * running header ("xiv Fundamentals of…"), and the rest comes out as a list.
+ * Entries that follow a contents block on the next pages join it.
+ */
+function continueContents(blocks: Block[]): void {
+  for (let i = 0; i < blocks.length; i++) {
+    const c = blocks[i];
+    if (c.kind !== "contents") continue;
+    let j = i + 1;
+    let lastPage = c.page;
+    const absorbed: ContentsEntry[] = [];
+    while (j < blocks.length && blocks[j].page <= lastPage + 1) {
+      const b = blocks[j];
+      const onNewPage = b.page > lastPage;
+      if (b.kind === "heading" && onNewPage && b.text.length < 90 && /^[ivxlcdm]{1,7}\b|\b[ivxlcdm]{1,7}$/i.test(b.text)) {
+        j++; // a running header with a roman page number
+        continue;
+      }
+      const lines = b.kind === "list" ? b.items.map(spansText) : b.kind === "paragraph" ? [spansText(b.spans)] : null;
+      if (!lines) break;
+      const parsed = lines.map((t) => parseContentsEntry(t.trim()));
+      if (parsed.some((e) => !e)) {
+        // An author line under the last entry.
+        if (b.kind === "paragraph" && (absorbed.length || c.entries.length) && isAuthorList(lines[0].trim())) {
+          const last = absorbed[absorbed.length - 1] ?? c.entries[c.entries.length - 1];
+          last.authors = last.authors ? `${last.authors} ${lines[0].trim()}` : lines[0].trim();
+          j++;
+          continue;
+        }
+        break;
+      }
+      absorbed.push(...(parsed as ContentsEntry[]));
+      lastPage = b.page;
+      j++;
+    }
+    if (!absorbed.length) continue;
+    c.entries.push(...absorbed);
+    blocks.splice(i + 1, j - i - 1);
+  }
 }
 
 /**
