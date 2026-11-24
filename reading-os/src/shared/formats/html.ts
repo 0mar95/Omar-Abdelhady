@@ -30,6 +30,7 @@ interface Style {
   b?: boolean;
   sup?: boolean;
   sub?: boolean;
+  code?: boolean;
 }
 
 const tag = (n: Element) => (n.localName || n.nodeName).toLowerCase().replace(/^.*:/, "");
@@ -168,7 +169,15 @@ export class HtmlConverter {
       else this.walk(el); // headings that only hold an image
       return;
     }
-    if (t === "p" || t === "pre" || t === "dt" || t === "dd" || t === "address" || t === "summary") {
+    if (t === "pre") {
+      const text = (el.textContent ?? "").replace(/\r/g, "").replace(/^\n+|\s+$/g, "");
+      if (text.trim()) {
+        const page = this.src.page;
+        this.push({ kind: "code", id: this.id(page), page, rect: NO_RECT, chapter: 0, lines: text.split("\n") });
+      }
+      return;
+    }
+    if (t === "p" || t === "dt" || t === "dd" || t === "address" || t === "summary") {
       if (hasBlockChild(el)) return this.walk(el);
       const img = onlyImage(el);
       if (img) return this.figure(img, null);
@@ -356,6 +365,7 @@ function styleOf(el: Element): Style {
   if (t === "strong" || t === "b") return { b: true };
   if (t === "sup") return { sup: true };
   if (t === "sub") return { sub: true };
+  if (t === "code" || t === "kbd" || t === "samp" || t === "tt") return { code: true };
   return {};
 }
 

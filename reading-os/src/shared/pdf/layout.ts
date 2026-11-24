@@ -104,10 +104,35 @@ export function fitLayout(lines: Line[], own: PageLayout | null, dominant: PageL
   if (text.length < 4) return own ?? dominant;
   // Lines that cross the gutter only because two columns' lines merged (with a
   // clear gap at the gutter) don't count: they will be split.
-  const crossing = text.filter((l) => l.x0 < g - 3 && l.x1 > g + 3 && !hasGapAt(l, g)).length;
+  const crosses = (l: Line) => l.x0 < g - 3 && l.x1 > g + 3 && !hasGapAt(l, g);
+  const crossing = text.filter(crosses);
   const right = text.filter((l) => l.x0 >= g - 3).length;
-  if (crossing <= text.length * 0.1 && right >= 2) return dominant;
+  if (crossing.length <= text.length * 0.1 && right >= 2) return dominant;
+  // Mixed pages: a full-width part on top (an article's title and abstract, a
+  // chapter opener) or at the bottom, and the book's two columns elsewhere.
+  // Reading order already reads full-width lines as bands of their own.
+  if (mixedPage(text, crossing, crosses, g)) return dominant;
   return own ?? dominant;
+}
+
+function mixedPage(text: Line[], crossing: Line[], crosses: (l: Line) => boolean, g: number): boolean {
+  // Split the page at its full-width lines; any part in between whose lines
+  // sit side by side on the same baselines is set in the two columns.
+  const cuts = crossing.map((l) => l.top).sort((a, b) => a - b);
+  const bands: Line[][] = Array.from({ length: cuts.length + 1 }, () => []);
+  for (const l of text) {
+    if (crosses(l)) continue;
+    let k = 0;
+    while (k < cuts.length && l.top >= cuts[k]) k++;
+    bands[k].push(l);
+  }
+  return bands.some((ls) => {
+    const left = ls.filter((l) => l.x1 <= g + 3);
+    const right = ls.filter((l) => l.x0 >= g - 3);
+    if (left.length < 2 || right.length < 2) return false;
+    const paired = left.filter((a) => right.some((b) => Math.abs(a.y - b.y) < a.size * 0.4)).length;
+    return paired >= 2 && paired >= Math.min(left.length, right.length) * 0.5;
+  });
 }
 
 /** The most common layout, for pages with too little text to decide on their own. */
@@ -177,7 +202,21 @@ const PAGE_NUM_RE = /^(?:page\s+)?(\d{1,4}|[ivxlcdm]{1,7})$/i;
  * and repeat their style and position on many pages.
  */
 export function findFurniture(pages: { lines: Line[]; h: number }[], stats: FontStats): Furniture {
-  const band = (l: Line, h: number): "top" | "bottom" | null => (l.bottom < h * 0.085 ? "top" : l.top > h * 0.915 ? "bottom" : null);
+  // The page's outer lines, when set apart by a gap (a running header just
+  // inside a deep top margin), count as margins too.
+  const edges = new Map<Line, "top" | "bottom">();
+  for (const p of pages) {
+    const sorted = [...p.lines].sort((a, b) => a.top - b.top);
+    const firstY = sorted[0]?.top;
+    const top = sorted.filter((l) => Math.abs(l.top - firstY) < 2);
+    const nextTop = sorted.find((l) => l.top > firstY + 2);
+    if (top.length && nextTop && top[0].bottom < p.h * 0.15 && nextTop.top - top[0].bottom > top[0].size * 1.2) for (const l of top) edges.set(l, "top");
+    const lastY = sorted[sorted.length - 1]?.top;
+    const bottom = sorted.filter((l) => Math.abs(l.top - lastY) < 2);
+    const prev = [...sorted].reverse().find((l) => l.top < lastY - 2);
+    if (bottom.length && prev && bottom[0].top > p.h * 0.85 && bottom[0].top - prev.bottom > bottom[0].size * 1.2) for (const l of bottom) edges.set(l, "bottom");
+  }
+  const band = (l: Line, h: number): "top" | "bottom" | null => (l.bottom < h * 0.085 ? "top" : l.top > h * 0.915 ? "bottom" : (edges.get(l) ?? null));
   const key = (l: Line, b: string) => `${b}|${l.font}|${Math.round(l.size)}|${Math.round(l.y / 4)}`;
   const counts = new Map<string, number>();
   pages.forEach((p) => {

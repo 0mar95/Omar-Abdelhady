@@ -3,7 +3,7 @@
 // the page and rectangle it came from so the original page can always be shown.
 
 /** Bump whenever extraction output changes so cached books are re-extracted. */
-export const EXTRACTOR_VERSION = 9;
+export const EXTRACTOR_VERSION = 10;
 
 /** Rectangle in PDF points, origin at the top-left of the page. */
 export interface Rect {
@@ -21,6 +21,8 @@ export interface Span {
   sup?: boolean;
   /** Subscript (e.g. "5-HT1B/1D", chemical formulas). */
   sub?: boolean;
+  /** Inline program code, set in a typewriter font. */
+  code?: boolean;
   /** Citation numbers pointing into the chapter's reference list. */
   cite?: number[];
   /** Cross-reference to a figure, table or box key, e.g. "Fig 1-1". */
@@ -139,6 +141,12 @@ export interface ContentsEntry {
   authors?: string;
 }
 
+/** Program code or other preformatted text, line by line. */
+export interface CodeBlock extends BlockBase {
+  kind: "code";
+  lines: string[];
+}
+
 export type Block =
   | HeadingBlock
   | ParagraphBlock
@@ -149,7 +157,8 @@ export type Block =
   | CalloutBlock
   | ReferencesBlock
   | IndexBlock
-  | ContentsBlock;
+  | ContentsBlock
+  | CodeBlock;
 
 export interface PageInfo {
   w: number;
@@ -228,6 +237,8 @@ export function blockText(b: Block): string {
     case "references":
       return b.items.map((r) => `${r.n}. ${r.text}`).join("\n");
     case "index":
+      return b.lines.join("\n");
+    case "code":
       return b.lines.join("\n");
     case "contents":
       return b.entries.map((e) => [e.num, e.title, e.page].filter(Boolean).join(" ")).join("\n");

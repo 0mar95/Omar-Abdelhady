@@ -15,6 +15,8 @@ export interface Run {
   font: string;
   bold: boolean;
   italic: boolean;
+  /** Set in a typewriter font (program code). */
+  mono?: boolean;
   /** Text not running left-to-right horizontally (watermarks, rotated labels). */
   rotated: boolean;
 }
@@ -66,6 +68,9 @@ function bboxOf(m: Matrix, x0: number, y0: number, x1: number, y1: number): Rect
 export function cleanFontName(name: string): string {
   return name.replace(/^[A-Z]{6}\+/, "");
 }
+
+/** Typewriter (monospace) fonts: program code, terminal sessions. */
+export const MONO_FONT = /(mono|courier|consol|menlo|inconsolata|typewriter|sourcecode|lucidaconsole|^(?:cm|sf|lm|ec|tc)tt\d|[-_]tt\d|firacode|jetbrains|letter ?gothic)/i;
 
 export function fontStyle(font: string): { bold: boolean; italic: boolean } {
   const style = font.includes("-") ? font.slice(font.lastIndexOf("-") + 1) : font;
@@ -120,6 +125,7 @@ export async function loadPage(doc: PDFDocumentProxy, index: number, pdfjs: Pdfj
     if (size < 0.5) continue;
     const font = fontFor(raw.fontName);
     const { bold, italic } = fontStyle(font);
+    const mono = MONO_FONT.test(cleanFontName(font));
     runs.push({
       str: raw.str,
       x: m[4],
@@ -129,6 +135,7 @@ export async function loadPage(doc: PDFDocumentProxy, index: number, pdfjs: Pdfj
       font,
       bold,
       italic,
+      mono,
       rotated: Math.abs(m[1]) > 0.05 * size || m[0] <= 0,
     });
   }

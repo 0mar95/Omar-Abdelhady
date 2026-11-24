@@ -21,6 +21,7 @@ import type { Column, PageLayout } from "./layout.ts";
 import { lineRect, readingOrder, union } from "./layout.ts";
 import type { FontStats, Line } from "./lines.ts";
 import { pushSpan } from "./lines.ts";
+import { MONO_FONT } from "./load.ts";
 import type { Region } from "./regions.ts";
 import { isBodyText } from "./regions.ts";
 import { buildTable } from "./tables.ts";
@@ -75,6 +76,9 @@ export class BlockBuilder {
   private index: { title: string; lines: string[]; page: number; rect: Rect } | null = null;
   private callout: { title: string; items: Span[][]; page: number; rect: Rect; lastLine?: Line } | null = null;
   private contents: ContentsBlock | null = null;
+  private code: { lines: Line[]; page: number; rect: Rect } | null = null;
+  /** Pieces of one contents line set apart on the same baseline ("1.1" | "Title . . ." | "3"). */
+  private row: { lines: Line[]; col: Column } | null = null;
   private tables = new Map<string, TableBlock | BoxBlock>();
   private nextId = 0;
   private perPage = new Map<number, number>();
@@ -201,6 +205,21 @@ export class BlockBuilder {
     const text = l.text.trim();
     if (!text) return;
 
+    const r = this.row;
+    if (r) {
+      const first = r.lines[0];
+      if (this.mode === "contents" && l.page === first.page && Math.abs(l.y - first.y) < first.size * 0.35) {
+        r.lines.push(l);
+        return;
+      }
+      this.row = null;
+      this.onContentsLine(joinRow(r.lines), r.col);
+    }
+
+    // Program code keeps its lines and indentation.
+    if (isCodeLine(l)) return this.onCodeLine(l);
+    if (this.code) this.flushCode();
+
     // Big lone number above a chapter title.
     if (/^\d{1,3}$/.test(text) && l.size >= this.stats.bodySize * 2) {
       this.flushAll();
@@ -234,7 +253,8 @@ export class BlockBuilder {
       case "callout":
         return this.onCalloutLine(l, col);
       case "contents":
-        return this.onContentsLine(l, col);
+        this.row = { lines: [l], col };
+        return;
       default:
         return this.onBodyLine(l, col);
     }
@@ -378,6 +398,7 @@ export class BlockBuilder {
     if (
       !ended &&
       /^\p{Ll}/u.test(cur.text.trim()) &&
+      !TERM_DEFINITION.test(cur.text.trim()) &&
       prev.page === cur.page &&
       cur.top >= prev.top &&
       cur.top - prev.bottom < size * 1.2 &&
@@ -423,7 +444,49 @@ export class BlockBuilder {
     this.blocks.push({ kind: "list", id: this.id(l.page), page: l.page, rect: l.rect, chapter: 0, ordered: l.ordered, items: l.items.map(trimSpans) });
   }
 
+  private onCodeLine(l: Line): void {
+    const c = this.code;
+    const last = c?.lines[c.lines.length - 1];
+    const continues = c && last && ((l.page === last.page && l.top - last.bottom < l.size * 1.8) || l.page === last.page + 1);
+    if (!continues) {
+      this.flushText();
+      this.flushHeading();
+      this.code = { lines: [l], page: l.page, rect: lineRect(l) };
+      return;
+    }
+    c!.lines.push(l);
+    if (l.page === c!.page) c!.rect = union(c!.rect, lineRect(l));
+  }
+
+  private flushCode(): void {
+    const c = this.code;
+    if (!c) return;
+    this.code = null;
+    // Rows by baseline; columns from x positions (monospace: ~0.6em per character).
+    const rows: Line[][] = [];
+    for (const l of c.lines) {
+      const row = rows.find((r) => r[0].page === l.page && Math.abs(r[0].y - l.y) < l.size * 0.3);
+      if (row) row.push(l);
+      else rows.push([l]);
+    }
+    const left = Math.min(...c.lines.map((l) => l.x0));
+    const lines = rows.map((r) => {
+      const parts = r.sort((a, b) => a.x0 - b.x0);
+      const cw = parts[0].size * 0.6;
+      let out = " ".repeat(Math.max(0, Math.round((parts[0].x0 - left) / cw)));
+      let x = parts[0].x0;
+      for (const p of parts) {
+        if (out.trim()) out += " ".repeat(Math.max(1, Math.round((p.x0 - x) / cw)));
+        out += p.text.replace(/\s+$/, "");
+        x = p.x1;
+      }
+      return out;
+    });
+    this.blocks.push({ kind: "code", id: this.id(c.page), page: c.page, rect: c.rect, chapter: 0, lines });
+  }
+
   private flushText(): void {
+    this.flushCode();
     this.flushPara();
     this.flushList();
     const pending = this.pending;
@@ -490,6 +553,11 @@ export class BlockBuilder {
   }
 
   private flushAll(): void {
+    if (this.row) {
+      const r = this.row;
+      this.row = null;
+      this.onContentsLine(joinRow(r.lines), r.col);
+    }
     this.flushText();
     this.flushHeading();
     // A pending chapter number is kept until its title arrives.
@@ -526,10 +594,31 @@ export function parseContentsEntry(text: string): ContentsEntry | null {
   let title = m[1].trim();
   // Titles start with a capital or a chapter number; prose lines don't.
   if (!/^[\p{Lu}\d]/u.test(title)) return null;
-  const num = /^(\d{1,3})\.?\s+(?=\S)/.exec(title);
+  const num = /^(\d{1,3}(?:\.\d{1,3}){0,3})\.?\s+(?=\S)/.exec(title);
   if (num) title = title.slice(num[0].length);
   if (!/\p{L}/u.test(title)) return null;
   return { num: num?.[1], title, page: m[2] };
+}
+
+/** A glossary-style entry, "term: definition", starts its own paragraph. */
+export const TERM_DEFINITION = /^\p{Ll}[\p{L}\p{N} '’-]{0,40}:\s/u;
+
+/** One line from pieces on the same baseline, in reading order. */
+function joinRow(lines: Line[]): Line {
+  if (lines.length === 1) return lines[0];
+  const parts = [...lines].sort((a, b) => a.x0 - b.x0);
+  const spans: Span[] = [];
+  parts.forEach((p, i) => {
+    if (i) spans.push({ text: " " });
+    spans.push(...p.spans);
+  });
+  return { ...parts[0], x1: Math.max(...parts.map((p) => p.x1)), runs: parts.flatMap((p) => p.runs), spans, text: parts.map((p) => p.text.trim()).join(" ") };
+}
+
+/** Lines set in a typewriter (monospace) font: program code, terminal sessions. */
+
+export function isCodeLine(l: Line): boolean {
+  return MONO_FONT.test(l.font.replace(/^[A-Z]{6}\+/, ""));
 }
 
 const LEADER_AUTHORS_RE = /^(.*?[^\s.])\s*(?:[.·…]\s*){3,}(\d{1,4}|[ivxlcdm]{1,7})\s+(\S.*)$/;

@@ -10,6 +10,7 @@ import {
   type Span,
   type TocEntry,
 } from "../model.ts";
+import { normalizeStructure } from "../normalize.ts";
 import { BlockBuilder, colFor, type HeadingStyles, type Item } from "./blocks.ts";
 import { detectLayout, dominantLayout, findFurniture, fitLayout, lineRect, readingOrder, splitAtGutter, type PageLayout } from "./layout.ts";
 import { buildLines, fontStats, lineFromRuns, removeNoise, type FontStats, type Line } from "./lines.ts";
@@ -76,13 +77,14 @@ export function analyzeBook(raw: RawPage[], meta: BookMeta, startedAt = Date.now
     for (const r of regions[i]) placed.push({ rect: r.rect, item: { kind: "region", region: r } });
     for (const p of readingOrder(placed, layout)) builder.process(p.item);
   });
-  const blocks = builder.finish();
+  let blocks = builder.finish();
 
   const pageInfos = pageLabels(
     pages.map((p) => ({ w: p.w, h: p.h })),
     furniture.labels,
   );
   chaptersFromContents(blocks, pageInfos);
+  blocks = normalizeStructure(blocks);
   const chapters = assignChapters(blocks);
   linkReferences(blocks, pageInfos);
   const toc = buildToc(blocks);
@@ -301,7 +303,7 @@ const normTitle = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "")
 export function chaptersFromContents(blocks: Block[], pages: PageInfo[]): void {
   const contents = blocks.find((b) => b.kind === "contents");
   if (!contents || contents.kind !== "contents") return;
-  const numbered = contents.entries.filter((e) => e.num);
+  const numbered = contents.entries.filter((e) => e.num && /^\d+$/.test(e.num));
   if (numbered.length < 3) return;
   const existing = blocks.filter((b) => b.kind === "heading" && b.level === 1 && b.page > contents.page).length;
   // Styles already found most chapters: trust them.

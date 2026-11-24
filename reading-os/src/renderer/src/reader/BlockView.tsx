@@ -73,10 +73,11 @@ export function Spans({ spans, chapter, seen }: { spans: Span[]; chapter: number
               {s.text}
             </sup>
           );
-        const plain = !s.xref && s.pageRef === undefined && !s.sup && !s.sub;
+        const plain = !s.xref && s.pageRef === undefined && !s.sup && !s.sub && !s.code;
         let node: ReactNode = s.text.includes("http") ? linkify(s.text, String(i)) : mark && plain ? markTerms(s.text, mark, seen!, String(i)) : s.text;
         if (s.sup) node = <sup>{node}</sup>;
         if (s.sub) node = <sub>{node}</sub>;
+        if (s.code) node = <code className="inline-code">{node}</code>;
         if (s.i) node = <em>{node}</em>;
         if (s.b) node = <strong>{node}</strong>;
         if (s.xref)
@@ -338,11 +339,11 @@ function Contents({ b }: { b: ContentsBlock }) {
   return (
     <ol className="contents font-ui text-[0.88em]">
       {b.entries.map((e, i) => (
-        <li key={i}>
+        <li key={i} className={e.num?.includes(".") ? "sub" : e.num ? "chapter" : undefined}>
           <button type="button" disabled={!targets[i]} onClick={() => targets[i] && useReader.getState().jumpTo({ blockId: targets[i]! })}>
             <span className="num">{e.num}</span>
             <span className="min-w-0">
-              <span className={e.num ? "font-medium" : "text-ink-2"}>{e.title}</span>
+              <span className={e.num && !e.num.includes(".") ? "font-medium" : "text-ink-2"}>{e.title}</span>
               {e.authors && <span className="mt-0.5 block text-[0.82em] font-normal italic text-ink-3">{e.authors}</span>}
             </span>
             <span className="leader" aria-hidden />
@@ -441,6 +442,12 @@ function BlockInner({ b }: { b: Block }) {
       );
     case "contents":
       return <Contents b={b} />;
+    case "code":
+      return (
+        <pre className="scroll-quiet my-5 overflow-x-auto rounded-lg bg-paper-2 px-4 py-3 font-mono text-[0.78em] leading-relaxed text-ink ring-1 ring-rule/60">
+          <code>{b.lines.join("\n")}</code>
+        </pre>
+      );
   }
 }
 

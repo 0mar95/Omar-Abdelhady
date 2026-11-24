@@ -80,6 +80,10 @@ export function buildChunks(book: BookDoc): Chunk[] {
           push("refs", b.items.slice(k, k + 12).map((r) => `${r.n}. ${r.text}`).join("\n"), i, i);
         return;
       }
+      case "code": {
+        push("figure", b.lines.join("\n"), i, i);
+        return;
+      }
       case "figure": {
         const t = [b.key, spansText(b.caption), b.labels].filter(Boolean).join(" ");
         if (t.trim()) push("figure", t, i, i);

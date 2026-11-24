@@ -80,6 +80,8 @@ const render = (b: Block): string => {
       return `<details>${pg}<summary>${esc(b.title)} (${b.items.length})</summary><ol>${b.items.map((r) => `<li value=${r.n}>${esc(r.text)}</li>`).join("")}</ol></details>`;
     case "index":
       return `<details>${pg}<summary>${esc(b.title)} (${b.lines.length} lines)</summary><pre>${esc(b.lines.join("\n"))}</pre></details>`;
+    case "code":
+      return `<pre>${pg}${esc(b.lines.join("\n"))}</pre>`;
     case "contents":
       return `<ol class=toc>${pg}${b.entries.map((e) => `<li>${e.num ? `<b>${esc(e.num)}</b> ` : ""}${esc(e.title)} <small>${esc(e.page)}</small></li>`).join("")}</ol>`;
   }

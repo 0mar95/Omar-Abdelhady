@@ -292,6 +292,14 @@ button {
 .book .pageref:hover {
   text-decoration-color: var(--link);
 }
+/* Inline program code: typewriter face, a touch smaller, a faint tint. */
+.book code.inline-code {
+  font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
+  font-size: 0.86em;
+  padding: 0.05em 0.3em;
+  border-radius: 4px;
+  background: var(--paper-2, rgba(127, 127, 127, 0.1));
+}
 /* Glossary terms: a quiet dotted underline; hover for the definition. */
 .book .term {
   text-decoration-line: underline;
@@ -340,10 +348,22 @@ button {
 .book .contents button:not(:disabled) {
   cursor: pointer;
 }
+/* Sections sit under their chapter; numbers keep one column so titles line up. */
+.book .contents li.sub {
+  padding-left: 2.2em;
+}
+.book .contents li.chapter:not(:first-child) {
+  margin-top: 0.35em;
+}
 .book .contents .num {
+  flex: none;
   min-width: 1.6em;
   color: var(--accent);
   font-variant-numeric: lining-nums tabular-nums;
+}
+.book .contents li.sub .num {
+  min-width: 2.4em;
+  color: var(--ink-3);
 }
 .book .contents .leader {
   flex: 1;

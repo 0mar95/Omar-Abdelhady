@@ -7,7 +7,8 @@ import { unzipSync } from "fflate";
 import { EXTRACTOR_VERSION, blockText, type Block, type BookDoc, type BookFormat, type PageInfo } from "../model.ts";
 import { assignChapters, buildToc, linkReferences } from "../pdf/analyze.ts";
 import { countWords } from "../pdf/text.ts";
-import { HtmlConverter, chapterNumbers, normalizeHeadings } from "./html.ts";
+import { normalizeStructure } from "../normalize.ts";
+import { HtmlConverter, normalizeHeadings } from "./html.ts";
 import { textToBlocks } from "./text.ts";
 
 /** DOMParser in the app; linkedom in tests and the command-line extractor. */
@@ -107,7 +108,7 @@ function finish(
   started: number,
 ): BookDoc {
   normalizeHeadings(raw);
-  const blocks = chapterNumbers(raw);
+  const blocks = normalizeStructure(raw);
   const chapters = assignChapters(blocks);
   linkReferences(blocks, pages);
   const toc = buildToc(blocks);

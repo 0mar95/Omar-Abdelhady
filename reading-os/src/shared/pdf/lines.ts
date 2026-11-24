@@ -254,6 +254,7 @@ function makeLine(page: number, runs: Run[], row: Row): Line {
       if (isSmall && lowered) span.sub = true;
       if (r.italic) span.i = true;
       if (r.bold) span.b = true;
+      if (r.mono && !r.bold) span.code = true;
     }
     if (span.cite || span.sup || span.sub) {
       const lead = /^\s*/.exec(span.text)![0];
@@ -262,7 +263,7 @@ function makeLine(page: number, runs: Run[], row: Row): Line {
       span.text = span.text.trim();
       pushSpan(spans, span);
       if (trail) pushSpan(spans, { text: trail });
-    } else if ((span.i || span.b) && /^\s/.test(span.text)) {
+    } else if ((span.i || span.b || span.code) && /^\s/.test(span.text)) {
       // Keep the word space outside italic/bold so styling hugs the words.
       pushSpan(spans, { text: " " });
       span.text = span.text.replace(/^\s+/, "");
@@ -307,7 +308,8 @@ export function pushSpan(spans: Span[], span: Span): void {
     !!last.i === !!span.i &&
     !!last.b === !!span.b &&
     !!last.sup === !!span.sup &&
-    !!last.sub === !!span.sub
+    !!last.sub === !!span.sub &&
+    !!last.code === !!span.code
   ) {
     last.text += span.text;
     return;
