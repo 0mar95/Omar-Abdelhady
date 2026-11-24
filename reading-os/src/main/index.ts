@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, net, protocol, session, shell, type MenuItemConstructorOptions } from "electron";
-import { promises as fs } from "node:fs";
+import { existsSync, promises as fs, renameSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { AiConfig, ChatRequest, DefineRequest, SearchParams } from "../shared/ipc";
@@ -8,8 +8,22 @@ import { DEFINITION_SCHEMA, LibraryIndex, NOTE_SCHEMA, definitionMessages, noteM
 import * as ollama from "./ollama";
 
 // One name everywhere, so settings and the book cache live in the same
-// folder however the app is launched (~/Library/Application Support/Reading OS).
-app.setName("Reading OS");
+// folder however the app is launched (~/Library/Application Support/Kenning).
+app.setName("Kenning");
+
+// The app used to be called "Reading OS": move its library, settings and
+// cached books to the new folder the first time Kenning starts.
+try {
+  const appData = app.getPath("appData");
+  const before = path.join(appData, "Reading OS");
+  const now = path.join(appData, "Kenning");
+  if (existsSync(before) && !existsSync(now)) renameSync(before, now);
+} catch (e) {
+  console.error("Couldn't move the old Reading OS data folder", e);
+}
+
+/** The app icon, for the Dock and window while running from source (installers embed it). */
+const devIcon = () => path.join(app.getAppPath(), "build/icon.png");
 
 // The packaged UI is served from app://reading-os/ (a standard, secure origin)
 // so ES-module workers such as pdf.js work exactly as they do in development.
@@ -63,6 +77,7 @@ function createWindow(): BrowserWindow {
     // The saved theme's paper color, so the window never flashes another theme.
     backgroundColor: PAPER[(state.settings as { theme?: string } | undefined)?.theme ?? "sepia"] ?? PAPER.sepia,
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
+    ...(process.platform !== "darwin" && !app.isPackaged && existsSync(devIcon()) ? { icon: devIcon() } : {}),
     trafficLightPosition: { x: 14, y: 14 },
     webPreferences: {
       preload: path.join(here, "../preload/index.cjs"),
@@ -212,6 +227,7 @@ function registerIpc(): void {
 }
 
 void app.whenReady().then(async () => {
+  if (process.platform === "darwin" && !app.isPackaged && existsSync(devIcon())) app.dock?.setIcon(devIcon());
   await fs.mkdir(dataDir(), { recursive: true });
   await loadState();
   protocol.handle("app", (request) => {

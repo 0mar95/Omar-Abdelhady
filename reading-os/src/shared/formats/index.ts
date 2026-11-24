@@ -84,7 +84,7 @@ export async function convertBook(bytes: Uint8Array, meta: ConvertMeta, env: Con
       return { book: finish(blocks, [page()], meta, "text", title, author, started) };
     }
     default:
-      throw new Error("This file type can't be opened. Reading OS opens PDF, EPUB, Word (.docx), HTML, Markdown and text files.");
+      throw new Error("This file type can't be opened. Kenning opens PDF, EPUB, Word (.docx), HTML, Markdown and text files.");
   }
 }
 

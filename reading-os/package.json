@@ -1,6 +1,6 @@
 {
   "name": "reading-os",
-  "productName": "Reading OS",
+  "productName": "Kenning",
   "version": "0.1.0",
   "description": "AI-native, document-first desktop reader that turns hard-to-read PDFs into a clean reading experience.",
   "private": true,
@@ -50,10 +50,11 @@
     "vitest": "^5.1.1"
   },
   "build": {
-    "appId": "app.readingos.desktop",
-    "productName": "Reading OS",
+    "appId": "app.kenning.desktop",
+    "productName": "Kenning",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "out/**",
@@ -75,7 +76,13 @@
         "ext": "pdf",
         "name": "PDF document",
         "role": "Viewer"
+      },
+      {
+        "ext": "epub",
+        "name": "EPUB book",
+        "role": "Viewer"
       }
-    ]
+    ],
+    "icon": "build/icon.png"
   }
 }

@@ -152,7 +152,10 @@ function TopBar({ onOpenFile }: { onOpenFile(): void }) {
     <header
       className={`flex h-16 shrink-0 items-center gap-3 border-b border-rule/70 bg-paper px-4 [-webkit-app-region:drag] sm:px-6 ${isMac && window.readingOS ? "pl-20 sm:pl-24" : ""}`}
     >
-      <div className="shrink-0 text-[19px] font-semibold tracking-tight text-ink [font-family:'Literata_Variable',Georgia,serif]">Reading OS</div>
+      <div className="flex shrink-0 items-center gap-2.5">
+        <img src="icon.png" alt="" className="size-7" draggable={false} />
+        <span className="text-[19px] font-semibold tracking-tight text-ink [font-family:'Literata_Variable',Georgia,serif]">Kenning</span>
+      </div>
       <div className="flex min-w-0 flex-1 justify-center">
         <button
           type="button"
@@ -394,7 +397,7 @@ function EmptyShelf({ onOpenFile }: { onOpenFile(): void }) {
         Hard-to-read PDFs, turned into books you enjoy reading.
       </h1>
       <p className="mb-0 mt-3 max-w-[560px] text-[15px] leading-relaxed text-ink-2">
-        Open a textbook and Reading OS rebuilds it as clean, reflowable text — with explanations, search and summaries right in the page. Everything stays on this computer.
+        Open a textbook and Kenning rebuilds it as clean, reflowable text — with explanations, search and summaries right in the page. Everything stays on this computer.
       </p>
       <button
         type="button"

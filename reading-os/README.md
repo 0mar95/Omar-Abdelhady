@@ -1,4 +1,4 @@
-# Reading OS
+# Kenning
 
 A document-first desktop reader that turns hard-to-read PDFs into a clean,
 comfortable book — with an AI reading companion that runs entirely on your
