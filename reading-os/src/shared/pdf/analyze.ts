@@ -10,7 +10,7 @@ import {
   type Span,
   type TocEntry,
 } from "../model.ts";
-import { bookTitle, normalizeStructure, placeFigures } from "../normalize.ts";
+import { bookTitle, normalizeStructure, placeFigures, recoverContents } from "../normalize.ts";
 import { BlockBuilder, colFor, type HeadingStyles, type Item } from "./blocks.ts";
 import { detectLayout, dominantLayout, findFurniture, fitLayout, lineRect, readingOrder, splitAtGutter, type PageLayout } from "./layout.ts";
 import { buildLines, fontStats, lineFromRuns, removeNoise, type FontStats, type Line } from "./lines.ts";
@@ -83,6 +83,7 @@ export function analyzeBook(raw: RawPage[], meta: BookMeta, startedAt = Date.now
     pages.map((p) => ({ w: p.w, h: p.h })),
     furniture.labels,
   );
+  blocks = recoverContents(blocks);
   chaptersFromContents(blocks, pageInfos);
   blocks = normalizeStructure(blocks);
   linkReferences(blocks, pageInfos);

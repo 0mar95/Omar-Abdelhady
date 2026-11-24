@@ -158,8 +158,13 @@ export const CleanView = memo(function CleanView({ scrollRef }: { scrollRef: Rea
     const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
     // Without title pages, a first heading that just repeats the title would show twice.
     const first = book.blocks[0];
+    // The cover picture already sits on the title page: don't show it again at full size.
+    const cover = book.blocks.slice(0, 4).find((b) => b.kind === "figure" && b.image && b.page <= 1);
     const skip = !titlePage && first?.kind === "heading" && norm(first.text) === norm(book.title) ? first.id : null;
-    return { synth: !titlePage, afterId: titlePage?.id, list: !hasContents, skip };
+    // Only compose a title page from the file's details when they name the book properly.
+    const decent = !/^(?:abstract|preface|foreword|contents|introduction|untitled|chapter \d+)$/i.test(book.title.trim()) && /\p{L}{3,}/u.test(book.title) && !/\.\.|^\S+\.\d+/.test(book.title);
+    const synth = !titlePage && decent;
+    return { synth, afterId: titlePage?.id, list: !hasContents && (synth || !!titlePage), skip: synth ? skip : null, cover: synth ? cover?.id : undefined };
   }, [book]);
 
   // Key points shown in a chapter opener aren't repeated where they were printed.
@@ -172,7 +177,7 @@ export const CleanView = memo(function CleanView({ scrollRef }: { scrollRef: Rea
         {opening.synth && <TitlePage b={{ title: "", details: [] }} />}
         {opening.synth && opening.list && <ChapterList />}
         {book.blocks.map((b, i) => {
-          if (b.id === opening.skip || pulled.has(b.id)) return null;
+          if (b.id === opening.skip || b.id === opening.cover || pulled.has(b.id)) return null;
           const label = settings.pageNumbers && b.page !== prevPage ? book.pages[b.page]?.label : undefined;
           prevPage = b.page;
           const attached = cardsByBlock.get(b.id);

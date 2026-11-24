@@ -171,3 +171,75 @@ describe("title pages of an edited textbook", () => {
     });
   });
 });
+
+describe("recoverContents", () => {
+  it("builds a contents page from titles and page numbers on separate lines", () => {
+    const out = normalizeStructure([
+      h("Contents", 1, 4),
+      { ...p("Foreword vii Preface viii Contributors x", 4), spans: [{ text: "Foreword vii Preface viii Contributors x", i: true }] },
+      h("Introduction", 2, 4),
+      p("1", 4),
+      p("1 / Arndt Happe, Gerd Körner", 4),
+      h("Requirements", 2, 4),
+      p("17", 4),
+      p("2 / Arndt Happe", 4),
+      h("Microsurgery", 2, 4),
+      p("29", 4),
+      h("Records", 2, 5),
+      p("33", 5),
+      h("Summary", 2, 5),
+      p("40", 5),
+      p("‘Beauty is in the eye of the beholder’, it is said, and we have been hearing this old comment for many years.", 6),
+    ]);
+    const c = out.find((b) => b.kind === "contents");
+    expect(c?.kind === "contents" && c.entries.map((e) => [e.num ?? "", e.title, e.page])).toEqual([
+      ["", "Foreword", "vii"],
+      ["", "Preface", "viii"],
+      ["", "Contributors", "x"],
+      ["", "Introduction", "1"],
+      ["1", "Requirements", "17"],
+      ["2", "Microsurgery", "29"],
+      ["", "Records", "33"],
+      ["", "Summary", "40"],
+    ]);
+    expect(c?.kind === "contents" && c.entries[4].authors).toBe("Arndt Happe, Gerd Körner");
+    expect(out.some((b) => b.kind === "paragraph" && textOf(b).startsWith("‘Beauty"))).toBe(true);
+  });
+
+  it("leaves ordinary text alone", () => {
+    const out = normalizeStructure([h("Methods", 2, 4), p("We measured 12 teeth.", 4), p("Results were clear.", 4), h("Results", 2, 4), p("3", 4)]);
+    expect(out.some((b) => b.kind === "contents")).toBe(false);
+  });
+});
+
+describe("a title set over several lines", () => {
+  it("joins the lines and keeps the volume out of the byline", () => {
+    const out = normalizeStructure([
+      p("Essentials of", 0),
+      p("Esthetic", 0),
+      p("Dentistry", 0),
+      p("Volume Two", 0),
+      p("Edinburgh London New York Oxford Philadelphia St Louis Sydney Toronto", 2),
+      p("Copyright © 2014 Elsevier Ltd. All rights reserved.", 3),
+      p("ISBN 978-0-7234-3654-1", 3),
+    ]);
+    expect(out[0]).toMatchObject({ kind: "titlepage", title: "Essentials of Esthetic Dentistry", edition: "Volume Two" });
+    expect(out[0].kind === "titlepage" && out[0].byline).toBeUndefined();
+    expect(out[0].kind === "titlepage" && out[0].publisher).toBeUndefined();
+  });
+});
+
+describe("headingOnlyPages", () => {
+  it("turns a page of headings with no text into a list", () => {
+    const out = normalizeStructure([h("Also in this series", 1, 4), h("Requirements", 1, 4), h("Microsurgery", 1, 4), h("Bone Augmentation", 1, 4), h("Complications", 1, 4), h("Real Chapter", 1, 9), p("Body text here.", 9)]);
+    expect(out.filter((b) => b.kind === "heading").map((b) => (b as HeadingBlock).text)).toEqual(["Real Chapter"]);
+    expect(out[0].kind).toBe("list");
+  });
+});
+
+describe("chapter labels with a caption in front", () => {
+  it("keeps just the label", () => {
+    const [first] = normalizeStructure([h("He rode a black horse. CHAPTER III.", 1), p("Text.")]);
+    expect(first).toMatchObject({ kind: "heading", text: "Chapter III" });
+  });
+});

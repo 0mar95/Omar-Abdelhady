@@ -3,7 +3,7 @@
 // shaped alike — numbered chapters, headings that never skip a level, one
 // style of heading text.
 
-import { blockText, spansText, type Block, type HeadingBlock, type Span, type TitlePageBlock } from "./model.ts";
+import { blockText, spansText, type Block, type ContentsEntry, type HeadingBlock, type Span, type TitlePageBlock } from "./model.ts";
 
 const CHAPTER_LABEL = /^(?:chapter|chap\.|part|book|unit|lesson|module)\s+([0-9]{1,3}|[ivxlc]{1,7}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b[.:—–-]?\s*(.*)$/i;
 const NUMBERED = /^(\d{1,3})\.?\s+(\p{Lu}.{2,})$/u;
@@ -41,6 +41,9 @@ export function normalizeStructure(input: Block[], totalWords?: number): Block[]
       merged.push(b);
       continue;
     }
+    // A picture caption glued in front of the label: "He rode a black horse. CHAPTER III."
+    const glued = /^.+[.!?]["”’]?\s+((?:chapter|part|book)\s+(?:\d{1,3}|[ivxlc]{1,7})\.?)$/i.exec(b.text);
+    if (glued) b.text = tidyHeading(glued[1].replace(/\.$/, ""));
     const m = CHAPTER_LABEL.exec(b.text);
     const next = blocks[i + 1];
     if (m && !m[2].trim() && next?.kind === "heading" && next.page <= b.page + 1) {
@@ -57,6 +60,8 @@ export function normalizeStructure(input: Block[], totalWords?: number): Block[]
   }
   blocks = merged;
 
+  blocks = recoverContents(blocks);
+  blocks = headingOnlyPages(blocks);
   blocks = inlineAddresses(blocks);
   blocks = tidyOpening(blocks);
   blocks = stitchSentences(blocks);
@@ -133,6 +138,8 @@ export function tidyOpening(blocks: Block[]): Block[] {
   // (A preface or foreword before a late contents page keeps its heading.)
   const openingEnd = firstImprint ?? (contentsAt !== undefined && contentsAt - firstPage <= 8 ? contentsAt : Infinity);
   if (!imprint.size && openingEnd === Infinity) return blocks;
+  // Title pages hold short lines; real paragraphs mean the book (or paper) has already begun.
+  const composeTitle = !blocks.some((b) => b.page < openingEnd && b.kind === "paragraph" && (spansText(b.spans).match(/\S+/g) ?? []).length > 60);
 
   const out: Block[] = [];
   const seen = new Set<string>();
@@ -156,7 +163,7 @@ export function tidyOpening(blocks: Block[]): Block[] {
       continue;
     }
     // The title pages become one composed title page.
-    if (b.page < openingEnd && (b.kind === "heading" || b.kind === "paragraph" || b.kind === "list" || b.kind === "figure")) {
+    if (composeTitle && b.page < openingEnd && (b.kind === "heading" || b.kind === "paragraph" || b.kind === "list" || b.kind === "figure")) {
       if (!titlePage) {
         titlePage = { kind: "titlepage", id: b.id, page: b.page, rect: b.rect, chapter: b.chapter, title: "", details: [] };
         out.push(titlePage);
@@ -179,10 +186,12 @@ export function tidyOpening(blocks: Block[]): Block[] {
   return out;
 }
 
-const EDITION = /\b(?:\d+(?:st|nd|rd|th)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|revised|new)\s+edition\b|\bedition\b|\bversion\s+\d/i;
+const EDITION = /\b(?:\d+(?:st|nd|rd|th)|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|revised|new)\s+edition\b|\bedition\b|\bversion\s+\d|^vol(?:ume|\.)\s*(?:\d+|[ivx]+|one|two|three|four|five|six|seven|eight|nine|ten)\b/i;
+/** Words that start a label, never a person's name ("Volume Two", "Part One"). */
+const NOT_A_NAME = /^(?:volume|vol\.?|part|book|edition|series|chapter|section|unit|module|appendix)\b/i;
 const BY_LINE = /^(?:(?:edited|written|compiled|illustrated)\s+)?by:?$|^editors?:?$|^authors?:?$/i;
 const NAME = /^(?:(?:Dr|Prof|Professor|Sir|Dame)\.?\s+)?\p{Lu}[\p{L}'’.-]*(?:\s+(?:(?:van|von|de|da|del|di|le|la|du|bin|al)\s+)?\p{Lu}[\p{L}'’.-]*){1,3}$/u;
-const PUBLISHER = /\b(?:press|publishing|publishers?|wiley|elsevier|springer|quintessence|thieme|mosby|saunders|lippincott|mcgraw|oxford|cambridge|routledge|penguin|harper|\bltd\b|\binc\b)/i;
+const PUBLISHER = /\b(?:press|publishing|publishers?|wiley|elsevier|springer|quintessence|thieme|mosby|saunders|lippincott|mcgraw|routledge|penguin|harper|\bltd\b|\binc\b)/i;
 
 /** Names only: "Mark Greenwood | Ian Corbett", "Allen B. Downey". */
 export function isByline(line: string): boolean {
@@ -191,13 +200,13 @@ export function isByline(line: string): boolean {
     .split(/\s*(?:\||,|&|;|\band\b|·)\s*/)
     .map((p) => p.trim())
     .filter(Boolean);
-  return parts.length > 0 && parts.length <= 6 && parts.every((p) => NAME.test(p) && !PUBLISHER.test(p));
+  return parts.length > 0 && parts.length <= 6 && parts.every((p) => NAME.test(p) && !PUBLISHER.test(p) && !NOT_A_NAME.test(p));
 }
 
 /** "Gary D. Klasser, DMD" → "Gary D. Klasser"; null when the line isn't a person. */
 export function personName(line: string): string | null {
   const name = line.replace(/,?\s*(?:\b(?:[A-Z][A-Za-z]{0,3}\.?){1,4}(?:\s*\([A-Z]+\))?\s*,?\s*)+$/, (m) => (/[A-Z]{2}|PhD|MSc|BSc|MDSc|BDSc/.test(m) ? "" : m)).trim();
-  return NAME.test(name) && !PUBLISHER.test(name) ? name : null;
+  return NAME.test(name) && !PUBLISHER.test(name) && !NOT_A_NAME.test(name) ? name : null;
 }
 
 const SECTION_LABEL = /^(?:contributors?|contributing authors|with contributions? (?:from|by)|foreword by|illustrations? by|reviewers?):?$/i;
@@ -212,7 +221,17 @@ function composeTitlePage(tp: TitlePageBlock, lines: { text: string; heading: bo
   if (titleAt < 0) titleAt = 0;
   // An author's name set above the title: the title is the heading just after it.
   if (personName(lines[titleAt]?.text ?? "") && !lines[titleAt].heading && lines[titleAt + 1]?.heading) titleAt++;
-  tp.title = lines.length ? tidyHeading(take(titleAt)) : "";
+  tp.title = lines.length ? take(titleAt) : "";
+  // A title set over several lines ("Essentials of" / "Esthetic" / "Dentistry").
+  while (lines[titleAt + 1] && !used.has(titleAt + 1)) {
+    const next = lines[titleAt + 1].text;
+    const words = next.split(/\s+/);
+    const dangling = SMALL_WORDS.has(tp.title.split(/\s+/).pop()!.toLowerCase());
+    const fragment = words.length <= 2 && words.every((w) => /^\p{Lu}/u.test(w)) && tp.title.split(/\s+/).length + words.length <= 7;
+    if (!(dangling || fragment) || EDITION.test(next) || BY_LINE.test(next) || personName(next) || PUBLISHER.test(next)) break;
+    tp.title = `${tp.title} ${take(++titleAt)}`;
+  }
+  tp.title = tidyHeading(tp.title);
   const sub = lines[titleAt + 1];
   if (sub && sub.text.length <= 160 && !BY_LINE.test(sub.text) && !SECTION_LABEL.test(sub.text) && !personName(sub.text) && !PUBLISHER.test(sub.text)) {
     const split = SPLIT_EDITION.exec(sub.text);
@@ -222,10 +241,12 @@ function composeTitlePage(tp: TitlePageBlock, lines: { text: string; heading: bo
       tp.edition = split[2].trim();
     } else if (!EDITION.test(sub.text)) tp.subtitle = take(titleAt + 1);
   }
-  if (!tp.edition) {
-    const ed = lines.findIndex((l, i) => !used.has(i) && EDITION.test(l.text) && l.text.length < 60);
-    if (ed >= 0) tp.edition = take(ed);
-  }
+  // Edition and volume ("Seventh Edition · Volume Two").
+  const eds = tp.edition ? [tp.edition] : [];
+  lines.forEach((l, i) => {
+    if (!used.has(i) && EDITION.test(l.text) && l.text.length < 60 && !eds.some((e) => e.toLowerCase() === l.text.toLowerCase())) eds.push(take(i));
+  });
+  if (eds.length) tp.edition = eds.map(tidyHeading).join(" · ");
   // Names: a line of names, or the people listed after "Edited by" / "Editors".
   let names: string[] = [];
   let collecting = false;
@@ -255,7 +276,6 @@ function composeTitlePage(tp: TitlePageBlock, lines: { text: string; heading: bo
   });
   if (names.length) tp.byline = [...new Set(names)].join(" · ");
   if (tp.subtitle) tp.subtitle = tidyHeading(tp.subtitle);
-  if (tp.edition) tp.edition = tidyHeading(tp.edition);
   // Everything else (affiliations, degrees, contributors) stays, quietly, behind a fold.
   tp.details = lines.filter((_, i) => !used.has(i)).map((l) => l.text);
 }
@@ -394,4 +414,109 @@ export function bookTitle(blocks: Block[], metaTitle: string | undefined): strin
   const n = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
   if (meta && n(meta).includes(n(page))) return meta;
   return tp?.subtitle && page.length < 30 ? `${page}: ${tp.subtitle}`.slice(0, 120) : page;
+}
+
+const PAGE_NO = /^(?:\d{1,4}|[ivxlc]{1,7})$/i;
+const CHAPTER_BY = /^(\d{1,3})\s*[/|·–—-]\s*(\p{Lu}.+)$/u;
+const ENTRY_PAIRS = /(\S(?:.*?\S)??)\s+(\d{1,4}|[ivxlc]{1,7})(?=\s|$)/giu;
+
+/**
+ * Contents pages set like a magazine — each title on its own line, its page
+ * number on the next, the chapter number and authors above ("2 / Arndt Happe")
+ * — read as loose headings and numbers. Early in the book, a run of short
+ * lines and page numbers like that becomes a proper contents block.
+ */
+export function recoverContents(input: Block[]): Block[] {
+  if (!input.length || input.some((b) => b.kind === "contents")) return input;
+  const firstPage = input[0].page;
+  const textOf = (b: Block) => (b.kind === "heading" ? b.text : b.kind === "paragraph" ? spansText(b.spans) : "").replace(/\s+/g, " ").trim();
+  const blocks = input;
+  for (let i = 0; i < blocks.length && blocks[i].page - firstPage <= 30; i++) {
+    // Take the run: short headings/paragraphs, page numbers and "N / Authors" lines.
+    let j = i;
+    let numbers = 0;
+    while (j < blocks.length) {
+      const b = blocks[j];
+      const t = textOf(b);
+      if ((b.kind !== "heading" && b.kind !== "paragraph") || !t || t.length > 150 || (b.kind === "paragraph" && /[.!?]$/.test(t) && t.split(" ").length > 10)) break;
+      if (PAGE_NO.test(t)) numbers++;
+      j++;
+    }
+    if (j - i < 8 || numbers < 3) continue;
+    // Pair titles with page numbers, oldest title first.
+    const entries: ContentsEntry[] = [];
+    const waiting: ContentsEntry[] = [];
+    let label: { num: string; authors: string } | null = null;
+    for (let k = i; k < j; k++) {
+      const t = textOf(blocks[k]);
+      if (PAGE_NO.test(t)) {
+        const e = waiting.shift();
+        if (e) e.page = t;
+        continue;
+      }
+      const by = CHAPTER_BY.exec(t);
+      if (by && isByline(by[2].replace(/,\s*/g, " | "))) {
+        label = { num: by[1], authors: by[2] };
+        continue;
+      }
+      if (/^(?:table of )?contents$/i.test(t)) continue;
+      // Several entries on one line: "Foreword vii Preface viii Contributors x".
+      const pairs = [...t.matchAll(ENTRY_PAIRS)];
+      if (pairs.length >= 2 && pairs.reduce((a, m) => a + m[0].length, 0) >= t.replace(/\s/g, "").length * 0.8) {
+        for (const m of pairs) entries.push({ title: m[1], page: m[2] });
+        continue;
+      }
+      const tail = /^(.+?)\s+(\d{1,4})$/.exec(t);
+      const e: ContentsEntry = tail && blocks[k].kind !== "heading" ? { title: tail[1], page: tail[2] } : { title: t, page: "" };
+      if (label) {
+        e.num = label.num;
+        e.authors = label.authors;
+        label = null;
+      }
+      entries.push(e);
+      if (!e.page) waiting.push(e);
+    }
+    const paged = entries.filter((e) => e.page);
+    if (paged.length < 4 || paged.length < entries.length * 0.6) continue;
+    // Titles read like titles: words, not figures from a table ("5.77 24.6", "3×3, 64").
+    const wordy = (t: string) => /\p{L}{3,}/u.test(t) && (t.match(/[\d×.,%]/g) ?? []).length <= t.length * 0.2;
+    if (paged.filter((e) => wordy(e.title)).length < paged.length * 0.9) continue;
+    // Page numbers should mostly go up.
+    const arabic = paged.map((e) => Number(e.page)).filter((n) => !Number.isNaN(n));
+    let up = 0;
+    for (let k = 1; k < arabic.length; k++) if (arabic[k] >= arabic[k - 1]) up++;
+    if (arabic.length > 2 && up < (arabic.length - 1) * 0.7) continue;
+    const first = blocks[i];
+    const contents: Block = { kind: "contents", id: first.id, page: first.page, rect: first.rect, chapter: first.chapter, entries: entries.filter((e) => e.page) };
+    // Keep a "Contents" heading just before the run as the title.
+    return [...blocks.slice(0, i), contents, ...blocks.slice(j)];
+  }
+  return input;
+}
+
+/**
+ * A page of headings and almost no text (a series list of other volumes, a
+ * "books in this series" page) is a list, not a run of chapters.
+ */
+export function headingOnlyPages(blocks: Block[]): Block[] {
+  const byPage = new Map<number, { heads: number; words: number }>();
+  for (const b of blocks) {
+    const s = byPage.get(b.page) ?? { heads: 0, words: 0 };
+    if (b.kind === "heading") s.heads++;
+    else if (b.kind === "paragraph" || b.kind === "list") s.words += (blockText(b).match(/\S+/g) ?? []).length;
+    byPage.set(b.page, s);
+  }
+  const listPages = new Set([...byPage].filter(([, s]) => s.heads >= 5 && s.words < 40).map(([p]) => p));
+  if (!listPages.size) return blocks;
+  const out: Block[] = [];
+  for (const b of blocks) {
+    if (!listPages.has(b.page) || b.kind !== "heading") {
+      out.push(b);
+      continue;
+    }
+    const prev = out[out.length - 1];
+    if (prev?.kind === "list" && prev.page === b.page) prev.items.push([{ text: b.text }]);
+    else out.push({ kind: "list", id: b.id, page: b.page, rect: b.rect, chapter: b.chapter, ordered: false, items: [[{ text: b.text }]] } as Block);
+  }
+  return out;
 }
