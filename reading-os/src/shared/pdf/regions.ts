@@ -41,7 +41,8 @@ function findCaptions(lines: Line[], stats: FontStats): Caption[] {
   const taken = new Set<Line>();
   for (const l of lines) {
     if (taken.has(l)) continue;
-    const m = CAPTION_RE.exec(l.text.trim());
+    // A caption may open with a decoration: "■ Figure 1.22".
+    const m = CAPTION_RE.exec(l.text.trim().replace(/^[■□▪▫●○◆◇▶►•*]\s*/u, ""));
     if (!m) continue;
     const distinctive = l.firstFont !== stats.bodyFont || l.firstBold || l.size < stats.bodySize * 0.92;
     if (!distinctive) continue;
@@ -58,7 +59,11 @@ function findCaptions(lines: Line[], stats: FontStats): Caption[] {
       const gap = n.top - last.bottom;
       if (gap > last.size * 0.9) break;
       if (n.top > last.bottom + last.size * 0.9) break;
-      if (Math.abs(n.size - l.size) > 0.3 || n.font !== l.font) continue;
+      // The caption's title and description may be set in other styles, aligned under its label.
+      const sameStyle = Math.abs(n.size - l.size) <= 0.3 && n.font === l.font;
+      // (Figures only: under a table's caption, such lines are the table itself.)
+      const underLabel = type === "figure" && Math.abs(n.x0 - rect.x0) <= 4 && !isBodyText(n, stats) && n.size <= l.size * 1.2;
+      if (!sameStyle && !underLabel) continue;
       if (overlapX(lineRect(n), rect) <= 0 || n.x0 < rect.x0 - 2) continue;
       if (CAPTION_RE.test(n.text.trim())) break;
       capLines.push(n);
@@ -156,7 +161,10 @@ export function findRegions(page: PageForRegions, layout: PageLayout, stats: Fon
   const candidates = page.graphics.filter(
     (g) => area(g) < pageArea * 0.85 && !inTables(g),
   );
-  const clusters = cluster(candidates, 6).filter((r) => r.x1 - r.x0 > 12 && r.y1 - r.y0 > 12);
+  // A flat coloured bar (a section banner) is decoration, not a figure.
+  const hasImage = (r: Rect) => candidates.some((g) => g.kind === "image" && contains(r, g, 1));
+  const banner = (r: Rect) => !hasImage(r) && r.y1 - r.y0 < 40 && (r.x1 - r.x0) / Math.max(1, r.y1 - r.y0) > 6;
+  const clusters = cluster(candidates, 6).filter((r) => r.x1 - r.x0 > 12 && r.y1 - r.y0 > 12 && !banner(r));
   const takenClusters = new Set<Rect>();
   for (const c of captions.filter((c) => c.type === "figure")) {
     let best: Rect | undefined;
@@ -169,6 +177,13 @@ export function findRegions(page: PageForRegions, layout: PageLayout, stats: Fon
       else if (overlapY(cl, c.rect) > 0) d = Math.max(c.rect.x0 - cl.x1, cl.x0 - c.rect.x1) + 20;
       else continue;
       if (d < bestD) [best, bestD] = [cl, d];
+    }
+    // "Fig. 1.22" alone in the margin of the text points to a figure printed elsewhere:
+    // without a description it's only a figure if a picture is right beside it.
+    const labelOnly = c.lines.map((l) => l.text).join(" ").replace(/^[^\p{L}]*/u, "").replace(CAPTION_RE, "").trim().length < 3;
+    if (labelOnly && !(best && bestD < 40 && hasImage(best))) {
+      for (const l of c.lines) used.delete(l);
+      continue;
     }
     let crop: Rect;
     if (best && bestD < page.h * 0.35) {

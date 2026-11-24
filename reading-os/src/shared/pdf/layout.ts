@@ -257,32 +257,53 @@ export function findFurniture(pages: { lines: Line[]; h: number }[], stats: Font
 
   // 2. How often each shape (numbers blanked) and each style-and-place appears on page edges.
   const shapes = new Map<string, number>();
+  const exact = new Map<string, number>();
   const styles = new Map<string, number>();
   const styleKey = (r: Line[], h: number) => `${r[0].top < h / 2 ? "t" : "b"}|${r[0].font}|${Math.round(r[0].size)}|${Math.round(r[0].y / 4)}`;
   pages.forEach((p, pi) => {
     const sh = new Set<string>();
+    const ex = new Set<string>();
     const st = new Set<string>();
     for (const r of edges[pi]) {
       sh.add(shape(rowText(r)));
+      ex.add(rowText(r).toLowerCase());
       if (inBand(r, p.h) || apart.has(r)) st.add(styleKey(r, p.h));
     }
     for (const k of sh) shapes.set(k, (shapes.get(k) ?? 0) + 1);
+    for (const k of ex) exact.set(k, (exact.get(k) ?? 0) + 1);
     for (const k of st) styles.set(k, (styles.get(k) ?? 0) + 1);
   });
   const repeated = Math.max(3, pages.length < 30 ? 3 : Math.ceil(pages.length * 0.04));
 
   // 3. Numbered headers count only if their numbers climb with the pages (the offset stays put).
+  //    A footer can carry a number at each end ("14  1 Developmental Defects…", "1 Developmental … 15"):
+  //    each end is tried, and the one that climbs is the page number.
+  const ends = (t: string) => {
+    const lead = /^(\d{1,4}|[ivxlc]{1,7})\s+\S/i.exec(t)?.[1];
+    const trail = /\S\s+(\d{1,4}|[ivxlc]{1,7})$/i.exec(t)?.[1];
+    return { lead, trail };
+  };
   const offsets = new Map<string, Set<number>>();
   pages.forEach((_, pi) => {
     for (const r of edges[pi]) {
-      const m = NUM_HEADER.exec(rowText(r));
-      const n = m ? toNumber(m[1] ?? m[4]) : null;
-      if (n === null || r.some((l) => l.size > body * 1.8)) continue;
-      const k = shape(rowText(r));
-      offsets.set(k, (offsets.get(k) ?? new Set()).add(n - pi));
+      const t = rowText(r);
+      if (r.some((l) => l.size > body * 1.8)) continue;
+      const k = shape(t);
+      const { lead, trail } = ends(t);
+      for (const [side, v] of [["lead", lead], ["trail", trail]] as const) {
+        const n = v ? toNumber(v) : null;
+        if (n !== null) offsets.set(`${side}|${k}`, (offsets.get(`${side}|${k}`) ?? new Set()).add(n - pi));
+      }
     }
   });
-  const steady = (k: string) => (shapes.get(k) ?? 0) >= 2 && (offsets.get(k)?.size ?? 99) <= 2;
+  const steadySide = (k: string, side: "lead" | "trail") => (shapes.get(k) ?? 0) >= 2 && (offsets.get(`${side}|${k}`)?.size ?? 99) <= 2;
+  const pageNumberIn = (t: string): string | null => {
+    const k = shape(t);
+    const { lead, trail } = ends(t);
+    if (lead && steadySide(k, "lead")) return lead;
+    if (trail && steadySide(k, "trail")) return trail;
+    return null;
+  };
 
   const drop = new Set<Line>();
   const labels = new Map<number, string>();
@@ -302,14 +323,14 @@ export function findFurniture(pages: { lines: Line[]; h: number }[], stats: Font
         if (!lone || r[0].size > lone.size) lone = { text: text.replace(/^page\s+/i, ""), size: r[0].size };
         continue;
       }
-      const m = NUM_HEADER.exec(text);
-      const k = shape(text);
-      if (m && !big && steady(k)) {
+      const num = !big && NUM_HEADER.test(text) ? pageNumberIn(text) : null;
+      if (num) {
         for (const l of r) drop.add(l);
-        fromHeader ??= m[1] ?? m[4];
+        fromHeader ??= num;
         continue;
       }
-      if (((shapes.get(k) ?? 0) >= repeated && text.length < 100) || ((inBand(r, p.h) || apart.has(r)) && r.every((l) => l.size <= body * 1.15) && (styles.get(styleKey(r, p.h)) ?? 0) >= repeated)) for (const l of r) drop.add(l);
+      // Repeating word for word (a book or chapter title in the margin); "Figure 1.20", "Figure 1.23" differ.
+      if (((exact.get(text.toLowerCase()) ?? 0) >= repeated && text.length < 100) || ((inBand(r, p.h) || apart.has(r)) && r.every((l) => l.size <= body * 1.15) && (styles.get(styleKey(r, p.h)) ?? 0) >= repeated)) for (const l of r) drop.add(l);
     }
     let label = lone?.text ?? fromHeader;
     // 4. Failing that: a lone number halfway down the outer margin, clear of the text.

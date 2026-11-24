@@ -75,8 +75,13 @@ export function removeNoise(pages: RawPage[], stats: FontStats): { pages: RawPag
   for (const p of pages) for (const k of new Set(p.graphics.map(gsig))) gseen.set(k, (gseen.get(k) ?? 0) + 1);
   let removed = 0;
   const out = pages.map((p) => {
+    // Repeated text is noise (a watermark, a stamp) only when its whole line repeats:
+    // "■ Figure 1." at the same spot on every page still heads a different caption.
+    const repeated = (r: Run) => (seen.get(sig(r)) ?? 0) >= threshold;
+    const rowKey = (r: Run) => Math.round(r.y / 2);
+    const freshRows = new Set(p.runs.filter((r) => r.str.trim() && !repeated(r)).map(rowKey));
     const runs = p.runs.filter((r) => {
-      const noisy = r.rotated || r.size < stats.bodySize * 0.4 || (seen.get(sig(r)) ?? 0) >= threshold;
+      const noisy = r.rotated || r.size < stats.bodySize * 0.4 || (repeated(r) && !freshRows.has(rowKey(r)));
       if (noisy) removed++;
       return !noisy;
     });
