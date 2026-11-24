@@ -2,7 +2,7 @@
 // right under the paragraph, so the reader never leaves the page.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ACTIONS, contextFor, useCards, type ActionKind } from "../ai";
+import { ACTIONS, contextFor, SELECTION_ACTIONS, useCards, type ActionKind } from "../ai";
 import { useReader } from "../state/reader";
 import { useHighlights } from "../state/highlights";
 import { IconBulb, IconCopy, IconFeather, IconList, IconMarker, IconQuestion, IconSparkle } from "../ui/icons";
@@ -21,6 +21,7 @@ const ICONS: Record<ActionKind, React.ReactNode> = {
   summarize: <IconList size={15} />,
   terms: <IconBulb size={15} />,
   ask: <IconQuestion size={15} />,
+  figure: <IconSparkle size={15} />,
 };
 
 /** Finds the block a selection belongs to (by its end, where the card goes). */
@@ -142,7 +143,7 @@ export function SelectionMenu({ scrollRoot }: { scrollRoot: React.RefObject<HTML
             Highlight
           </button>
           <span className="mx-0.5 h-5 w-px bg-white/15" />
-          {(Object.keys(ACTIONS) as ActionKind[]).map((k) => (
+          {SELECTION_ACTIONS.map((k) => (
             <button
               key={k}
               type="button"

@@ -6,6 +6,7 @@ import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 import { create } from "zustand";
 import type { AboutBlock, Block, BoxBlock, HeadingBlock, FigureBlock, Span, TableBlock, TitlePageBlock } from "../../../shared/model";
 import { useCover } from "../covers";
+import { explainFigure } from "../ai";
 import { useHighlights, type Highlight } from "../state/highlights";
 import { formatMinutes, outlineOf } from "./outline";
 import type { TermMatch } from "../../../shared/glossary/extract";
@@ -14,7 +15,7 @@ import { renderRegion } from "../pdf";
 import { useGlossary } from "../state/glossary";
 import { useReader } from "../state/reader";
 import { useSettings } from "../state/settings";
-import { IconBulb, IconImage } from "../ui/icons";
+import { IconBulb, IconImage, IconSparkle } from "../ui/icons";
 
 const URL_RE = /(https?:\/\/[^\s)]+[^\s).,;])/g;
 
@@ -189,18 +190,38 @@ function Figure({ b }: { b: FigureBlock }) {
       <button
         type="button"
         className="w-full cursor-zoom-in rounded-md bg-[var(--figure-bg)] p-2 shadow-[0_0_0_1px_var(--rule)]"
-        onClick={() => setZoom({ page: b.page, rect: b.rect, title: b.key ?? "Figure", image: b.image, caption: stripKey(b.caption, b.key), chapter: b.chapter })}
+        onClick={() => setZoom({ page: b.page, rect: b.rect, title: b.key ?? "Figure", image: b.image, caption: stripKey(b.caption, b.key), chapter: b.chapter, blockId: b.id })}
         aria-label={`Enlarge ${b.key ?? "figure"}`}
       >
         <FigureImage b={b} />
       </button>
-      {(b.key || b.caption.length > 0) && (
-        <figcaption className="mt-3 w-full font-ui text-[0.8em] leading-snug text-ink-2">
+      <figcaption className="mt-3 flex w-full items-start gap-3 font-ui text-[0.8em] leading-snug text-ink-2">
+        <span className="min-w-0 flex-1">
           {b.key && <span className="mr-1.5 font-semibold text-accent">{b.key}</span>}
           <Spans spans={stripKey(b.caption, b.key)} chapter={b.chapter} />
-        </figcaption>
-      )}
+        </span>
+        <ExplainFigureButton id={b.id} />
+      </figcaption>
     </figure>
+  );
+}
+
+/** "What am I looking at?" under a figure. */
+export function ExplainFigureButton({ id, onDone }: { id: string; onDone?: () => void }) {
+  return (
+    <button
+      type="button"
+      className="explain-figure"
+      title="What am I looking at? — explained from the caption and the text about this figure"
+      onClick={() => {
+        const { book, ix } = useReader.getState();
+        if (!book || !ix) return;
+        onDone?.();
+        explainFigure(book, ix, id);
+      }}
+    >
+      <IconSparkle size={13} /> Explain
+    </button>
   );
 }
 
@@ -643,7 +664,7 @@ function HighlightMark({ marks }: { marks: Highlight[] }) {
 }
 
 // Figure zoom state lives here so figures can open it without prop drilling.
-export type ZoomTarget = { page: number; rect: Block["rect"]; title: string; image?: string; caption?: Span[]; chapter?: number; table?: TableBlock };
+export type ZoomTarget = { page: number; rect: Block["rect"]; title: string; image?: string; caption?: Span[]; chapter?: number; table?: TableBlock; blockId?: string };
 export const useZoom = create<{
   target: ZoomTarget | null;
   set(t: ZoomTarget | null): void;

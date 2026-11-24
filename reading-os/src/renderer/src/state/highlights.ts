@@ -60,7 +60,7 @@ export function paintHighlights(root: HTMLElement, list: Highlight[]): void {
 }
 
 /** A range for `text` inside `el`, matching across elements and ignoring whitespace differences. */
-function findText(el: Element, text: string): Range | null {
+export function findText(el: Element, text: string): Range | null {
   const map: { node: Text; offset: number }[] = [];
   let flat = "";
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);

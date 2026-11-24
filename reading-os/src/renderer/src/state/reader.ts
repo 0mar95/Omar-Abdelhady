@@ -16,7 +16,7 @@ import { reportPosition, useNotes } from "./notes";
 import { useSettings } from "./settings";
 
 export type View = "clean" | "page";
-export type Overlay = null | "toc" | "type" | "palette" | "glossary" | "recap";
+export type Overlay = null | "toc" | "type" | "palette" | "glossary" | "recap" | "review";
 
 /** Lookups derived once per book. */
 export interface BookIndex {

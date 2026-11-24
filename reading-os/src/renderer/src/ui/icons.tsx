@@ -20,6 +20,12 @@ export const IconType = make(<><path d="M3 18 8 6l5 12M4.8 14h6.4" /><path d="M1
 export const IconPage = make(<><path d="M7 3h7l5 5v13H7z" /><path d="M14 3v5h5" /></>);
 export const IconBook = make(<><path d="M4 5.5C6.5 4.5 9.5 4.5 12 6c2.5-1.5 5.5-1.5 8-.5V19c-2.5-1-5.5-1-8 .5-2.5-1.5-5.5-1.5-8-.5z" /><path d="M12 6v13.5" /></>);
 export const IconMarker = make(<><path d="m14.5 4.5 5 5L10 19H5v-5z" /><path d="M4 21h16" /></>);
+export const IconCheckCircle = make(<><circle cx="12" cy="12" r="8.5" /><path d="m8.5 12.2 2.4 2.4 4.6-5" /></>);
+export const IconPlay = make(<path d="M8 5.5v13l10-6.5z" />);
+export const IconPause = make(<><path d="M8.5 5.5v13M15.5 5.5v13" /></>);
+export const IconSkipBack = make(<><path d="M17 6v12l-8-6z" /><path d="M7 6v12" /></>);
+export const IconSkipFwd = make(<><path d="M7 6v12l8-6z" /><path d="M17 6v12" /></>);
+export const IconHeadphones = make(<><path d="M4 15v-3a8 8 0 0 1 16 0v3" /><rect x="3.5" y="14" width="4" height="6" rx="1.5" /><rect x="16.5" y="14" width="4" height="6" rx="1.5" /></>);
 export const IconX = make(<path d="M6 6l12 12M18 6 6 18" />);
 export const IconChevron = make(<path d="m9 6 6 6-6 6" />);
 export const IconSparkle = make(<><path d="M12 3.5 13.8 9l5.7 1.8-5.7 1.9L12 18.5l-1.8-5.8-5.7-1.9L10.2 9z" /><path d="M19 3v3M17.5 4.5h3" /></>);

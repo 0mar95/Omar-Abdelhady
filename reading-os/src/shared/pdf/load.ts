@@ -103,7 +103,9 @@ export async function loadPage(doc: PDFDocumentProxy, index: number, pdfjs: Pdfj
   const fontFor = (id: string): string => {
     let name = fontNames.get(id);
     if (name === undefined) {
-      name = id;
+      // pdf.js's own id when the font has no name; without its page prefix ("p23_g_d0_f32"),
+      // so the same font is recognised as the same on every page.
+      name = id.replace(/^p\d+_/, "");
       try {
         if (page.commonObjs.has(id)) {
           const f = page.commonObjs.get(id) as { name?: string } | null;
@@ -112,6 +114,7 @@ export async function loadPage(doc: PDFDocumentProxy, index: number, pdfjs: Pdfj
       } catch {
         /* font not resolved; keep the internal id */
       }
+      name = name.replace(/^p\d+_/, "");
       fontNames.set(id, name);
     }
     return name;

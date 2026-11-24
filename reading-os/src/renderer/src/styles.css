@@ -513,6 +513,236 @@ button {
   color: var(--accent);
 }
 
+/* Listen: the sentence being read, and the controls. */
+::highlight(listen) {
+  background-color: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.listen-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  z-index: 35;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 999px;
+  background: #211f1c;
+  color: #f1ece3;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.28);
+  font-size: 12.5px;
+}
+.listen-bar button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+}
+.listen-bar button:hover {
+  background: rgb(255 255 255 / 0.1);
+}
+.listen-bar button.play {
+  width: 38px;
+  height: 38px;
+  background: var(--accent);
+  color: #fff;
+}
+.listen-bar .where {
+  min-width: 70px;
+  padding: 0 0.4rem;
+  color: rgb(241 236 227 / 0.7);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.listen-bar select {
+  background: transparent;
+  color: inherit;
+  border: 1px solid rgb(255 255 255 / 0.2);
+  border-radius: 999px;
+  padding: 0.25rem 0.5rem;
+}
+.listen-bar select option {
+  color: #211f1c;
+}
+.listen-bar .voice {
+  max-width: 150px;
+}
+
+/* Figure explainer: a small button beside the caption. */
+.explain-figure {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.35em;
+  padding: 0.2em 0.65em;
+  border-radius: 999px;
+  border: 1px solid var(--rule);
+  color: var(--ink-3);
+  font-size: 0.95em;
+}
+.explain-figure:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Study mode: "Check yourself" at the end of a section, and the review sheet. */
+.study-invite {
+  margin: 1.6em 0 2.4em;
+}
+.study-invite button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  font-size: 0.78em;
+  color: var(--ink-3);
+  padding: 0.45em 0.9em;
+  border-radius: 999px;
+  border: 1px dashed var(--rule);
+}
+.study-invite button:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+  border-style: solid;
+}
+.study-card {
+  margin: 1.8em 0 2.6em;
+  padding: 1em 1.2em 1.1em;
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--card-ink, var(--ink));
+  border: 1px solid var(--rule);
+  box-shadow: var(--shadow);
+  font-size: 0.86em;
+}
+.study-card.review {
+  margin: 0;
+  font-size: 15px;
+}
+.study-card header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.7em;
+  font-size: 0.82em;
+  margin-bottom: 0.6em;
+}
+.study-card .label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.85em;
+  color: var(--accent);
+}
+.study-card .section {
+  color: var(--ink-3);
+}
+.study-card .hint {
+  margin: 0.3em 0;
+  color: var(--ink-3);
+  font-size: 0.9em;
+  text-align: left !important;
+  text-indent: 0 !important;
+}
+.study-card .question {
+  padding: 0.8em 0 0.4em;
+  border-top: 1px solid color-mix(in srgb, var(--rule) 70%, transparent);
+}
+.study-card .question:first-of-type {
+  border-top: 0;
+}
+.study-card .q {
+  margin: 0 0 0.6em;
+  font-weight: 500;
+  line-height: 1.45;
+  text-align: left !important;
+  text-indent: 0 !important;
+}
+.study-card .q .n {
+  display: inline-block;
+  min-width: 1.4em;
+  color: var(--accent);
+  font-weight: 600;
+}
+.study-card .options {
+  display: grid;
+  gap: 0.35em;
+}
+.study-card .option {
+  display: flex;
+  gap: 0.6em;
+  align-items: baseline;
+  text-align: left;
+  padding: 0.5em 0.7em;
+  border-radius: 8px;
+  border: 1px solid var(--rule);
+  line-height: 1.4;
+}
+.study-card .option:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.study-card .option .letter {
+  font-weight: 600;
+  color: var(--ink-3);
+}
+.study-card .option.right {
+  border-color: #3f7d4f;
+  background: color-mix(in srgb, #3f7d4f 14%, transparent);
+}
+.study-card .option.wrong {
+  border-color: #b4483c;
+  background: color-mix(in srgb, #b4483c 12%, transparent);
+}
+.study-card .option.dim {
+  opacity: 0.55;
+}
+.study-card .short form {
+  display: flex;
+  gap: 0.5em;
+}
+.study-card .short input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.45em 0.7em;
+  border-radius: 8px;
+  border: 1px solid var(--rule);
+  background: var(--paper);
+  color: var(--ink);
+}
+.study-card .short button,
+.study-card .self button {
+  padding: 0.45em 0.8em;
+  border-radius: 8px;
+  border: 1px solid var(--rule);
+}
+.study-card .self {
+  display: flex;
+  gap: 0.5em;
+  margin-top: 0.4em;
+}
+.study-card .self .right:hover {
+  border-color: #3f7d4f;
+  color: #3f7d4f;
+}
+.study-card .self .wrong:hover {
+  border-color: #b4483c;
+  color: #b4483c;
+}
+.study-card .answer,
+.study-card .why {
+  margin: 0.5em 0 0;
+  line-height: 1.45;
+  text-align: left !important;
+  text-indent: 0 !important;
+}
+.study-card .why {
+  color: var(--ink-3);
+  font-size: 0.92em;
+}
+
 /* Chapter openers: number, title, reading time, key points, sections. */
 .book .chapter-opener {
   margin: 5em 0 2.8em;

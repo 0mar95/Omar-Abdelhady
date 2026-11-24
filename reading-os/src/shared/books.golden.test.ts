@@ -61,6 +61,10 @@ const books: { name: string; check(b: BookDoc): void }[] = [
     name: "White_and_Pharoah_s_Oral_Radiology_-_pages_20-25.pdf",
     check(b) {
       expect(b.blocks.filter((x) => x.kind === "table").length).toBeGreaterThanOrEqual(1);
+      // A scanned page with per-page font names: its text is text, not part of a figure.
+      expect(b.stats.words).toBeGreaterThan(4000);
+      expect(b.toc.map((t) => t.title)).toEqual(expect.arrayContaining(["Collimation", "Inverse Square Law"]));
+      expect(anyText(b, /further limit the size of the beam/)).toBe(true);
       expect(anyText(b, /This page intentionally left blank/)).toBe(false);
     },
   },

@@ -8,7 +8,7 @@ import { platform, type ChatHandle } from "./platform";
 import type { BookIndex } from "./state/reader";
 import { useSettings } from "./state/settings";
 
-export type ActionKind = "explain" | "summarize" | "terms" | "simplify" | "ask";
+export type ActionKind = "explain" | "summarize" | "terms" | "simplify" | "ask" | "figure";
 
 export const ACTIONS: Record<ActionKind, { label: string; short: string; key: string }> = {
   explain: { label: "Explain", short: "Explain", key: "E" },
@@ -16,7 +16,11 @@ export const ACTIONS: Record<ActionKind, { label: string; short: string; key: st
   summarize: { label: "Summarize", short: "Summary", key: "U" },
   terms: { label: "Key terms", short: "Key terms", key: "T" },
   ask: { label: "Ask…", short: "Answer", key: "A" },
+  figure: { label: "Explain figure", short: "What you're looking at", key: "" },
 };
+
+/** The actions offered over selected text (the figure explainer lives on figures). */
+export const SELECTION_ACTIONS: ActionKind[] = ["explain", "simplify", "summarize", "terms", "ask"];
 
 const SYSTEM = `You are a reading companion built into a book reader. The reader selected a passage and wants help understanding it.
 Rules:
@@ -30,6 +34,8 @@ const TASKS: Record<Exclude<ActionKind, "ask">, string> = {
   simplify:
     "Rewrite the selected passage in plain, simple language (about a high-school reading level). Keep every fact and number; drop jargon or define it in parentheses. Keep it about the same length or shorter.",
   summarize: "Summarize the selected passage in 2–4 bullet points, most important idea first. Each bullet one sentence.",
+  figure:
+    "The reader is looking at a figure (a clinical photo, radiograph, micrograph, diagram or chart) and asks: what am I looking at? Using only the figure's caption, its labels and the book text that discusses it, explain: what kind of image it is, what it shows, the features to look for and where (use the labels and arrows the caption mentions), and why it matters in this section. If the text doesn't say something, don't guess it. 150 words at most, as short bullets after one opening sentence.",
   terms:
     'List the key terms and concepts in the selected passage as bullets in the form "- **term** — definition". Use the book\'s own definitions when the context gives them. 3–7 terms.',
 };
@@ -75,6 +81,34 @@ export function contextFor(book: BookDoc, ix: BookIndex, blockId: string, select
   };
 }
 
+/** Context for the figure explainer: its caption and labels, and the paragraphs that discuss it. */
+export function figureContext(book: BookDoc, ix: BookIndex, figureId: string): ReadingContext {
+  const i = ix.byId.get(figureId) ?? 0;
+  const fig = book.blocks[i];
+  const base = contextFor(book, ix, figureId, "");
+  if (fig.kind !== "figure") return base;
+  const caption = [fig.key, fig.caption.map((s) => s.text).join(""), fig.labels && `Labels in the figure: ${fig.labels}`].filter(Boolean).join("\n");
+  // Paragraphs in this chapter that mention the figure ("Fig 1-22"), nearest first.
+  const ch = book.chapters[fig.chapter];
+  const mentions: string[] = [];
+  if (fig.key)
+    for (let k = ch?.start ?? 0; k < (ch?.end ?? book.blocks.length) && mentions.join(" ").length < 2400; k++) {
+      const b = book.blocks[k];
+      const spans = b.kind === "paragraph" ? b.spans : b.kind === "list" ? b.items.flat() : [];
+      if (spans.some((s) => s.xref === fig.key)) mentions.push(ix.texts[k]);
+    }
+  // No explicit mention: the text just before the figure.
+  const discuss = mentions.length ? mentions.join("\n\n") : base.before;
+  return { ...base, before: discuss.slice(0, 2400), paragraph: caption.slice(0, 1500), selection: caption.slice(0, 1500) };
+}
+
+/** "What am I looking at?" — the answer streams into a card under the figure. */
+export function explainFigure(book: BookDoc, ix: BookIndex, figureId: string): string {
+  const fig = book.blocks[ix.byId.get(figureId) ?? 0];
+  const quote = fig.kind === "figure" ? [fig.key, fig.caption.map((s) => s.text).join("")].filter(Boolean).join(" ") : "Figure";
+  return useCards.getState().run("figure", figureId, quote, figureContext(book, ix, figureId));
+}
+
 export function buildMessages(kind: ActionKind, ctx: ReadingContext, question?: string): ChatMessage[] {
   const where = [ctx.bookTitle && `Book: ${ctx.bookTitle}`, ctx.chapter, ...ctx.sections.map((s) => `Section: ${s}`)].filter(Boolean).join("\n");
   const task = kind === "ask" ? `Answer the reader's question about the selected passage: ${question}` : TASKS[kind];
@@ -102,6 +136,17 @@ const mockMode = () => new URLSearchParams(location.search).has("mockAI") || use
 
 /** Offline stand-in used by automated tests (?mockAI) so the UI can be exercised without Ollama. */
 function mockChat(messages: ChatMessage[], onText: (t: string) => void): ChatHandle {
+  if (messages[0].content.includes("self-test questions")) {
+    const sec = /Section: (.+)/.exec(messages[1].content)?.[1] ?? "this section";
+    const json = JSON.stringify({
+      questions: [
+        { type: "mcq", q: `Which topic does “${sec}” cover?`, options: [sec, "Something else", "Neither", "Both"], answer: 0, why: "Demo question — connect Ollama for real ones." },
+        { type: "short", q: `In one sentence, what is “${sec}” about?`, answer: sec, why: "Demo question." },
+      ],
+    });
+    let stopped = false;
+    return { done: (async () => void (!stopped && onText(json)))(), abort: () => (stopped = true) };
+  }
   const recap = /Most recently read text[^\n]*\n"""([\s\S]*?)"""/.exec(messages[1].content);
   const sel = recap?.[1] ?? /Selected passage:\n"""([\s\S]*?)"""/.exec(messages[1].content)?.[1] ?? "";
   const words = sel.split(/\s+/).filter((w) => w.length > 6).slice(0, 4);

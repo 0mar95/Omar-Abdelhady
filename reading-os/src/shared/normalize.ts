@@ -99,7 +99,7 @@ export function normalizeStructure(input: Block[], totalWords?: number): Block[]
       });
   }
   // Panel letters from inside a figure ("a b", "a b c d") aren't text.
-  blocks = blocks.filter((b) => !(b.kind === "paragraph" && /^(?:[a-h]\s+){1,7}[a-h]$/.test(spansText(b.spans).trim())));
+  blocks = blocks.filter((b) => !(b.kind === "paragraph" && /^(?:[a-h]\s+){0,7}[a-h]$|^(?:[A-H]\s+){0,7}[A-H]$/.test(spansText(b.spans).trim())));
   blocks = stitchSentences(blocks);
 
   // The same heading twice in a row (a running title repeated) shows once.

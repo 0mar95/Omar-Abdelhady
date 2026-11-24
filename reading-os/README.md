@@ -79,6 +79,22 @@ paragraph you are on. Select text and choose **Highlight** to mark it; page
 numbers, highlights and AI notes share one margin column, and a slim rail at
 the window's edge shows how far through the chapter you are.
 
+**Study mode** — at the end of each section, "Check yourself" asks 3–5
+questions written by the local model from that section's text only
+(multiple choice and short answer; without the model, fill-in-the-blank
+questions from the book's own bold terms). Questions you miss come back the
+next day, ones you get right later and later: **Q** (or the ✓ in the top bar)
+opens what's due.
+
+**Explain a figure** — "Explain" beside any caption (and "What am I looking
+at?" in the full-screen viewer) explains the figure from its caption, its
+labels and the paragraphs that discuss it.
+
+**Listen** — **L** reads the book aloud from where you are with the
+computer's own voices, a sentence at a time, highlighting it and keeping it in
+view; captions, tables, code and reference lists are skipped, citation
+numbers aren't spoken. Speed and voice are remembered.
+
 **Other formats** — EPUB, Word (.docx), HTML, Markdown and plain text become
 the same kind of book as a PDF, so everything below works on them too:
 search, Ask, the glossary, margin notes and the inline AI. EPUB chapters follow
@@ -148,6 +164,8 @@ is cached locally, and the AI only talks to Ollama on `localhost`.
 | T | Table of contents |
 | G | Glossary (A–Z) |
 | F | Focus mode on / off |
+| L | Listen (read aloud) / pause |
+| Q | Review questions that are due |
 | R | Catch me up (recap of what you've read) |
 | [ / ] | Previous / next chapter |
 | ⌘+ / ⌘− | Text size |

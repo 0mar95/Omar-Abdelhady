@@ -6,7 +6,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FigureBlock } from "../../../shared/model";
 import { useReader } from "../state/reader";
-import { IconX } from "../ui/icons";
+import { explainFigure } from "../ai";
+import { IconSparkle, IconX } from "../ui/icons";
 import { BookImage, FigureImage, PageCrop, Spans, stripKey, TableGrid, useZoom } from "./BlockView";
 
 const MIN = 1;
@@ -72,6 +73,21 @@ export function ZoomOverlay() {
           <ViewerButton label="Zoom in" onClick={() => zoomAt(1.25)}>
             +
           </ViewerButton>
+          {target.blockId && (
+            <button
+              type="button"
+              className="ml-2 flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12.5px] text-white/80 ring-1 ring-white/25 hover:bg-white/10 hover:text-white"
+              onClick={() => {
+                const { book, ix } = useReader.getState();
+                if (!book || !ix || !target.blockId) return;
+                set(null);
+                explainFigure(book, ix, target.blockId);
+                useReader.getState().jumpTo({ blockId: target.blockId });
+              }}
+            >
+              <IconSparkle size={13} /> What am I looking at?
+            </button>
+          )}
           <ViewerButton label="Close (Esc)" onClick={() => set(null)}>
             <IconX size={16} />
           </ViewerButton>
@@ -220,7 +236,7 @@ export function FigureDock({ scrollRef, articleRef }: { scrollRef: React.RefObje
   const el = scrollRef.current?.querySelector(`[data-block="${fig.id}"]`);
   const r = el?.getBoundingClientRect();
   if (!r || (r.bottom > 60 && r.top < window.innerHeight - 40)) return null;
-  const open = () => useZoom.getState().set({ page: fig.page, rect: fig.rect, title: fig.key ?? "Figure", image: fig.image, caption: stripKey(fig.caption, fig.key), chapter: fig.chapter });
+  const open = () => useZoom.getState().set({ page: fig.page, rect: fig.rect, title: fig.key ?? "Figure", image: fig.image, caption: stripKey(fig.caption, fig.key), chapter: fig.chapter, blockId: fig.id });
   return (
     <aside className="figure-dock font-ui" style={{ left: room.left, width: room.width }} aria-label="Figure being discussed">
       <button type="button" className="block w-full cursor-zoom-in rounded-md bg-[var(--figure-bg)] p-1.5 shadow-[0_0_0_1px_var(--rule)]" onClick={open} aria-label={`Enlarge ${fig.key ?? "figure"}`}>

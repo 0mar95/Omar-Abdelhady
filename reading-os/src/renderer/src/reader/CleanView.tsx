@@ -7,6 +7,8 @@ import type { Block } from "../../../shared/model";
 import { contextFor, useCards, type Card } from "../ai";
 import { paintHighlights, useHighlights, type Highlight } from "../state/highlights";
 import { useNotes } from "../state/notes";
+import { quizSections, useStudy } from "../state/study";
+import { SectionQuiz } from "./Study";
 import { useReader } from "../state/reader";
 import { FONTS, useSettings } from "../state/settings";
 import { BlockView, ChapterList, TitlePage } from "./BlockView";
@@ -42,7 +44,10 @@ export const CleanView = memo(function CleanView({ scrollRef }: { scrollRef: Rea
 
   useEffect(() => {
     void useHighlights.getState().load(book.id);
+    void useStudy.getState().load(book.id);
   }, [book.id]);
+  // "Check yourself" goes after the last block of each section with enough to ask about.
+  const quizAfter = useMemo(() => quizSections(book, ix), [book, ix]);
   const marksByBlock = useMemo(() => {
     const m = new Map<string, Highlight[]>();
     for (const h of highlights) m.set(h.blockId, [...(m.get(h.blockId) ?? []), h]);
@@ -196,6 +201,7 @@ export const CleanView = memo(function CleanView({ scrollRef }: { scrollRef: Rea
               working={isWorking}
               gutter={gutter}
               marks={marksByBlock.get(b.id)}
+              quiz={quizAfter.get(b.id)}
             />
           );
           return b.id === opening.afterId && opening.list ? (
@@ -225,6 +231,7 @@ const BlockWithCards = memo(function BlockWithCards({
   working,
   gutter,
   marks,
+  quiz,
 }: {
   block: Block;
   label?: string;
@@ -235,6 +242,7 @@ const BlockWithCards = memo(function BlockWithCards({
   working?: boolean;
   gutter: boolean;
   marks?: Highlight[];
+  quiz?: string;
 }) {
   return (
     <>
@@ -242,6 +250,7 @@ const BlockWithCards = memo(function BlockWithCards({
       <BlockView b={block} pageLabel={label} flow={flow} marks={marks} />
       {!gutter && <InlineNote note={note} />}
       {cards?.map((c) => <InlineCard key={c.id} card={c} onRegenerate={onRegenerate} />)}
+      {quiz && <SectionQuiz headingId={quiz} />}
     </>
   );
 });

@@ -13,6 +13,8 @@ import { useLibrary } from "../state/library";
 import { openRecap } from "../state/recap";
 import { pageText, useReader } from "../state/reader";
 import { useSettings, type Theme } from "../state/settings";
+import { useStudy } from "../state/study";
+import { useListen } from "../state/listen";
 import { IconBook, IconChevron, IconCopy, IconImage, IconList, IconPage, IconSearch, IconSparkle, IconToc, IconType } from "../ui/icons";
 import { Markdown } from "../ui/markdown";
 
@@ -150,6 +152,20 @@ export function CommandPalette({ onOpenFile, onLibrary }: { onOpenFile(): void; 
         { id: "c-recap-ch", group: "Commands", title: "Recap this chapter so far", icon: <IconSparkle />, run: () => openRecap("chapter") },
         { id: "c-recap-book", group: "Commands", title: "Recap the book so far", icon: <IconSparkle />, run: () => openRecap("book") },
         { id: "c-type", group: "Commands", title: "Reading settings (font, size, theme, AI)", icon: <IconType />, run: () => setOverlay("type") },
+        {
+          id: "c-listen",
+          group: "Commands",
+          title: useListen.getState().active ? "Stop reading aloud" : "Listen: read aloud from here",
+          icon: <IconBook />,
+          run: () => (useListen.getState().active ? useListen.getState().stop() : useListen.getState().start()),
+        },
+        {
+          id: "c-review",
+          group: "Commands",
+          title: `Review questions${useStudy.getState().dueCount() ? ` (${useStudy.getState().dueCount()} due)` : ""}`,
+          icon: <IconList />,
+          run: () => setOverlay("review"),
+        },
         {
           id: "c-focus",
           group: "Commands",

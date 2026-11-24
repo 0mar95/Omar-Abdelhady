@@ -11,6 +11,11 @@ import { Hovercards } from "./Hovercards";
 import { GlossarySheet } from "./GlossarySheet";
 import { TocSheet, TypePanel } from "./Overlays";
 import { ZoomOverlay } from "./Viewers";
+import { ReviewSheet } from "./Study";
+import { ListenBar } from "./Listen";
+import { useListen } from "../state/listen";
+import { useStudy } from "../state/study";
+import { IconCheckCircle, IconHeadphones } from "../ui/icons";
 import { RecapPanel } from "./RecapPanel";
 import { openRecap } from "../state/recap";
 import { SelectionMenu } from "./SelectionMenu";
@@ -30,6 +35,8 @@ export function Reader({ onOpenFile, onLibrary }: { onOpenFile(): void; onLibrar
 
   useEffect(() => {
     void useCards.getState().load(book.id);
+    // Leaving the book stops reading aloud.
+    return () => useListen.getState().stop();
   }, [book.id]);
 
   // Bars fade away while reading forward, come back on scroll up or near the
@@ -106,6 +113,12 @@ export function Reader({ onOpenFile, onLibrary }: { onOpenFile(): void; onLibrar
       } else if (e.key === "g") {
         e.preventDefault();
         setOverlay("glossary");
+      } else if (e.key === "l") {
+        e.preventDefault();
+        useListen.getState().toggle();
+      } else if (e.key === "q") {
+        e.preventDefault();
+        setOverlay("review");
       } else if (e.key === "f") {
         e.preventDefault();
         useSettings.getState().set({ focus: !useSettings.getState().focus });
@@ -148,6 +161,10 @@ export function Reader({ onOpenFile, onLibrary }: { onOpenFile(): void; onLibrar
           <IconSearch size={14} /> Search or ask
           <kbd className="rounded border border-rule px-1 text-[10.5px]">{isMac ? "⌘K" : "Ctrl K"}</kbd>
         </button>
+        <BarButton label="Listen (L)" onClick={() => useListen.getState().toggle()}>
+          <IconHeadphones size={18} />
+        </BarButton>
+        <ReviewButton />
         <BarButton label="Reading settings" onClick={() => setOverlay(overlay === "type" ? null : "type")}>
           <IconType />
         </BarButton>
@@ -166,9 +183,34 @@ export function Reader({ onOpenFile, onLibrary }: { onOpenFile(): void; onLibrar
       {overlay === "glossary" && <GlossarySheet />}
       {overlay === "type" && <TypePanel />}
       {overlay === "recap" && <RecapPanel />}
+      {overlay === "review" && <ReviewSheet />}
+      <ListenBar />
       {overlay === "palette" && <CommandPalette onOpenFile={onOpenFile} onLibrary={onLibrary} />}
       <ZoomOverlay />
     </div>
+  );
+}
+
+/** Questions due for review: a quiet count in the top bar. */
+function ReviewButton() {
+  const reviews = useStudy((s) => s.reviews);
+  const questions = useStudy((s) => s.questions);
+  const due = useMemo(() => {
+    const now = Date.now();
+    return questions.filter((q) => reviews[q.id] && reviews[q.id].due <= now).length;
+  }, [reviews, questions]);
+  if (!questions.length) return null;
+  return (
+    <button
+      type="button"
+      title={due ? `${due} question${due === 1 ? "" : "s"} to review (Q)` : "Review (Q)"}
+      aria-label="Review"
+      onClick={() => useReader.getState().setOverlay("review")}
+      className="relative grid size-9 place-items-center rounded-lg text-ink-2 hover:bg-paper-2 hover:text-ink [-webkit-app-region:no-drag]"
+    >
+      <IconCheckCircle size={18} />
+      {due > 0 && <span className="absolute right-0.5 top-0.5 min-w-[16px] rounded-full bg-[var(--accent)] px-1 text-center text-[10px] font-semibold leading-[16px] text-white">{due}</span>}
+    </button>
   );
 }
 

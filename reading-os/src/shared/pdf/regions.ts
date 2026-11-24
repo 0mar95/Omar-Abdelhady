@@ -42,8 +42,11 @@ function findCaptions(lines: Line[], stats: FontStats): Caption[] {
   for (const l of lines) {
     if (taken.has(l)) continue;
     // A caption may open with a decoration: "■ Figure 1.22".
-    const m = CAPTION_RE.exec(l.text.trim().replace(/^[■□▪▫●○◆◇▶►•*]\s*/u, ""));
+    const lead = l.text.trim().replace(/^[■□▪▫●○◆◇▶►•*]\s*/u, "");
+    const m = CAPTION_RE.exec(lead);
     if (!m) continue;
+    // "Fig. 1.19B) further limit…" is a reference wrapping onto a new line, not a caption.
+    if (/^[\s.\d–-]*[A-Za-z]?\s*[),;]/.test(lead.slice(m[0].length))) continue;
     const distinctive = l.firstFont !== stats.bodyFont || l.firstBold || l.size < stats.bodySize * 0.92;
     if (!distinctive) continue;
     const word = m[1].toLowerCase();
@@ -171,6 +174,9 @@ export function findRegions(page: PageForRegions, layout: PageLayout, stats: Fon
     let bestD = Infinity;
     for (const cl of clusters) {
       if (takenClusters.has(cl)) continue;
+      // A frame or panel with running text inside it is not the figure.
+      const prose = lines.filter((l) => !used.has(l) && isBodyText(l, stats) && l.text.split(" ").length > 6 && contains(cl, lineRect(l), 2)).length;
+      if (prose > 3) continue;
       let d: number;
       if (cl.y1 <= c.rect.y0 + 4 && overlapX(cl, c.rect) > 0) d = c.rect.y0 - cl.y1;
       else if (cl.y0 >= c.rect.y1 - 4 && overlapX(cl, c.rect) > 0) d = cl.y0 - c.rect.y1 + 12;
@@ -205,6 +211,8 @@ export function findRegions(page: PageForRegions, layout: PageLayout, stats: Fon
       const lr = lineRect(l);
       const cx = (lr.x0 + lr.x1) / 2;
       const cy = (lr.y0 + lr.y1) / 2;
+      // Labels are short; a sentence of body text never is one.
+      if (isBodyText(l, stats) && l.text.split(" ").length > 6) continue;
       const inside = cx >= crop.x0 - 2 && cx <= crop.x1 + 2 && cy >= crop.y0 - 2 && cy <= crop.y1 + 2;
       const touching = !isBodyText(l, stats) && overlapX(lr, crop) > 0.5 * (lr.x1 - lr.x0) && lr.y0 < crop.y1 + 8 && lr.y1 > crop.y0 - 8;
       if (inside || touching) labels.push(l);
