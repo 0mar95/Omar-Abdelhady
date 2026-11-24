@@ -62,6 +62,7 @@ export function normalizeStructure(input: Block[], totalWords?: number): Block[]
 
   blocks = recoverContents(blocks);
   tidyContents(blocks);
+  chaptersFollowContents(blocks);
   blocks = headingOnlyPages(blocks);
   blocks = inlineAddresses(blocks);
   blocks = tidyOpening(blocks);
@@ -727,5 +728,35 @@ export function tidyContents(blocks: Block[]): void {
       out.push(e, ...(under.get(e) ?? []));
     }
     b.entries = out;
+  }
+}
+
+/**
+ * The chapters are the ones the contents page lists. When it numbers its
+ * chapters and the book has many more top-level headings (an atlas with a
+ * heading per disease), the headings it doesn't list are sections.
+ */
+export function chaptersFollowContents(blocks: Block[]): void {
+  const contents = blocks.find((b) => b.kind === "contents");
+  if (contents?.kind !== "contents") return;
+  const n = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+  const listed = contents.entries.filter((e) => e.num && /^\d+$/.test(e.num) && !e.sub);
+  if (listed.length < 3) return;
+  const after = blocks.slice(blocks.indexOf(contents) + 1);
+  const top = after.filter((b): b is HeadingBlock => b.kind === "heading" && b.level === 1);
+  if (top.length <= listed.length * 1.5) return;
+  const titles = listed.map((e) => ({ t: n(e.title), num: e.num }));
+  for (const h of top) {
+    const t = n(h.text);
+    const match = titles.find((x) => x.t && (x.t === t || (t.length > 8 && (x.t.startsWith(t) || t.startsWith(x.t)))));
+    if (match) h.number ??= match.num;
+    else if (!BOOK_PARTS.test(h.text) && !h.number) h.level = 2;
+  }
+  // Levels never jump: what sat under a demoted heading moves up with it.
+  let prev = 0;
+  for (const b of blocks) {
+    if (b.kind !== "heading") continue;
+    if (prev && b.level > prev + 1) b.level = (prev + 1) as HeadingBlock["level"];
+    prev = b.level;
   }
 }

@@ -204,12 +204,29 @@ function Figure({ b }: { b: FigureBlock }) {
   );
 }
 
+/**
+ * The caption without its own label, however the book spells it: the key
+ * "Fig 1-22" matches "Fig. 1.22", "Figure 1–22:", "FIG 1-22" (across styled spans too).
+ */
 export function stripKey(spans: Span[], key?: string): Span[] {
   if (!key || !spans.length) return spans;
-  const first = spans[0];
-  const re = new RegExp(`^\\s*${key.replace(/\s+/, "\\s*").replace("-", "\\s*-\\s*")}\\s*`);
-  if (re.test(first.text)) return [{ ...first, text: first.text.replace(re, "") }, ...spans.slice(1)].filter((s) => s.text);
-  return spans;
+  const nums = key.match(/\d+/g);
+  if (!nums) return spans;
+  const text = spans.map((s) => s.text).join("");
+  const re = new RegExp(`^\\s*(?:fig(?:ure)?|table|box|plate|chart)?s?\\.?\\s*${nums.join("\\s*[-.–—]\\s*")}(?!\\d)\\s*[.:–—-]?\\s*`, "i");
+  const m = re.exec(text);
+  if (!m) return spans;
+  let cut = m[0].length;
+  const out: Span[] = [];
+  for (const s of spans) {
+    if (cut >= s.text.length) {
+      cut -= s.text.length;
+      continue;
+    }
+    out.push(cut ? { ...s, text: s.text.slice(cut) } : s);
+    cut = 0;
+  }
+  return out;
 }
 
 /** The table itself: header row stays put while the body scrolls; the first column too, when wide. */

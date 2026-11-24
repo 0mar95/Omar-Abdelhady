@@ -295,3 +295,13 @@ describe("tidyContents", () => {
     ].map((x) => x));
   });
 });
+
+describe("chaptersFollowContents", () => {
+  it("keeps the listed chapters as chapters and makes the rest sections", () => {
+    const entries = [1, 2, 3].map((n) => ({ num: String(n), title: ["Developmental Defects", "Pathology of Teeth", "Pulp Disease"][n - 1], page: String(n * 40) }));
+    const heads = ["Developmental Defects", "Cleft Lip", "Bifid Uvula", "Varicosities", "Caliber-Persistent Artery", "Pathology of Teeth", "Attrition", "Abrasion", "Pulp Disease", "Pulpitis"].map((t, i) => [h(t, 1, 10 + i), p("Text about it.", 10 + i)]).flat();
+    const out = normalizeStructure([{ kind: "contents", id: "c", page: 4, rect: R, chapter: 0, entries } as Block, ...heads]);
+    const levels = out.filter((b): b is HeadingBlock => b.kind === "heading").map((b) => `${b.level}${b.number ? `:${b.number}` : ""} ${b.text}`);
+    expect(levels).toEqual(["1:1 Developmental Defects", "2 Cleft Lip", "2 Bifid Uvula", "2 Varicosities", "2 Caliber-Persistent Artery", "1:2 Pathology of Teeth", "2 Attrition", "2 Abrasion", "1:3 Pulp Disease", "2 Pulpitis"]);
+  });
+});
