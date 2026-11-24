@@ -256,3 +256,13 @@ describe("slash running headers", () => {
     expect(out.map(textOf)).toEqual(["Introduction", "Text one.", "More text.", "Patient-Related Factors", "Body."]);
   });
 });
+
+describe("cleanTitle", () => {
+  it("keeps the book's name from a file-name style title", async () => {
+    const { cleanTitle } = await import("./normalize.ts");
+    expect(cleanTitle("Color Atlas of Oral and Maxillofacial Diseases - Brad W. Neville, Douglas D. Damm, Carl M. Allen, Angela C. Chi - (2019) 546pp. 978-0323552257")).toBe("Color Atlas of Oral and Maxillofacial Diseases");
+    expect(cleanTitle("Techniques_for_Success_with_Implants_in_The_Esthetic_Zone.pdf")).toBe("Techniques for Success with Implants in The Esthetic Zone");
+    expect(cleanTitle("Think Python")).toBe("Think Python");
+    expect(cleanTitle("Orofacial Pain - Guidelines for Assessment")).toBe("Orofacial Pain: Guidelines for Assessment");
+  });
+});

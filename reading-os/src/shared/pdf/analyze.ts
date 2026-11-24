@@ -10,7 +10,7 @@ import {
   type Span,
   type TocEntry,
 } from "../model.ts";
-import { bookTitle, normalizeStructure, placeFigures, recoverContents } from "../normalize.ts";
+import { bookTitle, cleanTitle, normalizeStructure, placeFigures, recoverContents } from "../normalize.ts";
 import { BlockBuilder, colFor, type HeadingStyles, type Item } from "./blocks.ts";
 import { detectLayout, dominantLayout, findFurniture, fitLayout, lineRect, readingOrder, splitAtGutter, type PageLayout } from "./layout.ts";
 import { buildLines, fontStats, lineFromRuns, removeNoise, type FontStats, type Line } from "./lines.ts";
@@ -98,7 +98,7 @@ export function analyzeBook(raw: RawPage[], meta: BookMeta, startedAt = Date.now
     version: EXTRACTOR_VERSION,
     format: "pdf",
     id: meta.id,
-    title: bookTitle(blocks, meta.title) || guessTitle(blocks, meta.fileName),
+    title: bookTitle(blocks, meta.title) || cleanTitle(guessTitle(blocks, meta.fileName))!,
     author: meta.author,
     fileName: meta.fileName,
     pageCount: pages.length,
@@ -195,12 +195,36 @@ function pageLabels(pages: { w: number; h: number }[], found: Map<number, string
   for (const [i, n] of numeric) offsets.set(n - i, (offsets.get(n - i) ?? 0) + 1);
   const offset = [...offsets.entries()].sort((a, b) => b[1] - a[1])[0];
   const firstNumbered = Math.min(...[...numeric.keys()].filter((i) => offset && numeric.get(i)! - i === offset[0]));
+  // Front matter numbered in roman: fill its unnumbered pages the same way.
+  const romanOffsets = new Map<number, number>();
+  for (const [i, t] of found) {
+    const n = romanValue(t);
+    if (n !== null) romanOffsets.set(n - i, (romanOffsets.get(n - i) ?? 0) + 1);
+  }
+  const roman = [...romanOffsets.entries()].sort((a, b) => b[1] - a[1])[0];
+  const arabicStart = offset ? firstNumbered : Infinity;
   return pages.map((p, i) => {
     let label = found.get(i);
     // (A chapter's opening page usually goes unnumbered: it takes the number before the first numbered page.)
     if (!label && offset && offset[1] >= 3 && (i >= firstNumbered || (i === firstNumbered - 1 && i + offset[0] >= 1))) label = String(i + offset[0]);
+    if (!label && roman && roman[1] >= 2 && i < arabicStart && i + roman[0] >= 1) label = toRoman(i + roman[0]);
     return { w: p.w, h: p.h, label: label ?? String(i + 1) };
   });
+}
+
+function romanValue(t: string): number | null {
+  if (!/^[ivxlc]+$/.test(t)) return null;
+  const v: Record<string, number> = { i: 1, v: 5, x: 10, l: 50, c: 100 };
+  let n = 0;
+  for (let k = 0; k < t.length; k++) n += v[t[k]] < (v[t[k + 1]] ?? 0) ? -v[t[k]] : v[t[k]];
+  return n;
+}
+
+function toRoman(n: number): string {
+  const parts: [number, string][] = [[100, "c"], [90, "xc"], [50, "l"], [40, "xl"], [10, "x"], [9, "ix"], [5, "v"], [4, "iv"], [1, "i"]];
+  let out = "";
+  for (const [v, r] of parts) while (n >= v) (out += r, (n -= v));
+  return out;
 }
 
 export function assignChapters(blocks: Block[]): Chapter[] {

@@ -100,6 +100,19 @@ export function normalizeStructure(input: Block[], totalWords?: number): Block[]
     return !(b.kind === "heading" && prev?.kind === "heading" && prev.text.toLowerCase() === b.text.toLowerCase());
   });
 
+  // Before the contents page, a top-level heading with almost no text under it
+  // (an advert, a dedication) isn't a chapter.
+  {
+    const contentsAt = blocks.findIndex((b) => b.kind === "contents");
+    if (contentsAt > 0)
+      blocks.forEach((b, i) => {
+        if (i >= contentsAt || b.kind !== "heading" || b.level !== 1) return;
+        let words = 0;
+        for (let k = i + 1; k < blocks.length && !(blocks[k].kind === "heading" && (blocks[k] as HeadingBlock).level === 1); k++) words += (blockText(blocks[k]).match(/\S+/g) ?? []).length;
+        if (words < 120) b.level = 2;
+      });
+  }
+
   // A long book needs chapters: if there's at most one top-level heading but
   // many at the next level, those become the chapters.
   const words = totalWords ?? blocks.reduce((a, b) => a + (blockText(b).match(/\S+/g) ?? []).length, 0);
@@ -135,6 +148,8 @@ const IMPRINT = [
   /no part of this (?:publication|book)/i,
   /\bpermission\b.*\bpublisher\b/i,
   /permission is granted to copy/i,
+  // The publisher's advert for the e-book edition, on a page of its own.
+  /activate the e-?book|redeem|scratch off|pin code|access code|expert ?consult|evolve\.elsevier|vitalsource|any screen\. any time/i,
   /creative commons|gnu free documentation licen[cs]e/i,
   /typeset|set in \d/i,
 ];
@@ -158,16 +173,20 @@ export function tidyOpening(blocks: Block[]): Block[] {
   for (const [page, bs] of pages) {
     if (bs.some((b) => b.kind === "contents")) continue;
     const text = bs.map(blockText).join("\n");
-    if (IMPRINT.filter((re) => re.test(text)).length >= 2) imprint.add(page);
+    const opensWith = bs.find((b) => blockText(b).trim())?.kind ? blockText(bs.find((b) => blockText(b).trim())!).trim() : "";
+    if (IMPRINT.filter((re) => re.test(text)).length >= 2 || /^disclaimer\b/i.test(opensWith)) imprint.add(page);
   }
   // The title pages: everything before the imprint or contents page, if it comes early.
   const contentsAt = blocks.find((b) => b.kind === "contents" && b.page - firstPage <= 30)?.page;
-  const firstImprint = imprint.size ? Math.min(...imprint) : undefined;
+  // Title pages may sit either side of a disclaimer or copyright page: they run up to the last one.
+  const firstImprint = imprint.size ? Math.max(...[...imprint].filter((p) => p - firstPage <= 12), Math.min(...imprint)) : undefined;
   // (A preface or foreword before a late contents page keeps its heading.)
   const openingEnd = firstImprint ?? (contentsAt !== undefined && contentsAt - firstPage <= 8 ? contentsAt : Infinity);
   if (!imprint.size && openingEnd === Infinity) return blocks;
-  // Title pages hold short lines; real paragraphs mean the book (or paper) has already begun.
-  const composeTitle = !blocks.some((b) => b.page < openingEnd && b.kind === "paragraph" && (spansText(b.spans).match(/\S+/g) ?? []).length > 60);
+  // Title pages hold short lines: a page with real paragraphs isn't one (a paper's first page, a disclaimer).
+  const prosePages = new Set(blocks.filter((b) => b.page < openingEnd && b.kind === "paragraph" && (spansText(b.spans).match(/\S+/g) ?? []).length > 60).map((b) => b.page));
+  // …and once the book itself has begun (a paper's abstract on page one), there are no title pages.
+  const composeTitle = !prosePages.has(firstPage);
 
   const out: Block[] = [];
   const seen = new Set<string>();
@@ -191,7 +210,7 @@ export function tidyOpening(blocks: Block[]): Block[] {
       continue;
     }
     // The title pages become one composed title page.
-    if (composeTitle && b.page < openingEnd && (b.kind === "heading" || b.kind === "paragraph" || b.kind === "list" || b.kind === "figure")) {
+    if (composeTitle && b.page < openingEnd && !prosePages.has(b.page) && (b.kind === "heading" || b.kind === "paragraph" || b.kind === "list" || b.kind === "figure")) {
       if (!titlePage) {
         titlePage = { kind: "titlepage", id: b.id, page: b.page, rect: b.rect, chapter: b.chapter, title: "", details: [] };
         out.push(titlePage);
@@ -271,14 +290,24 @@ function composeTitlePage(tp: TitlePageBlock, lines: { text: string; heading: bo
     tp.title = `${tp.title} ${take(++titleAt)}`;
   }
   tp.title = tidyHeading(tp.title);
-  const sub = lines[titleAt + 1];
+  // A cover's display capitals inside a title ("Techniques for SUCCESS WITH IMPLANTS in …").
+  const caps = tp.title.split(" ").filter((w) => /^\p{Lu}{4,}$/u.test(w));
+  if (caps.length >= 2) tp.title = tp.title.replace(/\b\p{Lu}{2,}\b/gu, (w) => (SMALL_WORDS.has(w.toLowerCase()) ? w.toLowerCase() : w[0] + w.slice(1).toLowerCase()));
+  // Lines that only repeat part of the title (a half-title page set differently) go.
+  const flat = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+  lines.forEach((l, i) => {
+    if (!used.has(i) && flat(l.text).length >= 4 && flat(tp.title).includes(flat(l.text))) used.add(i);
+  });
+  let subAt = titleAt + 1;
+  while (used.has(subAt)) subAt++;
+  const sub = lines[subAt];
   if (sub && sub.text.length <= 160 && !BY_LINE.test(sub.text) && !SECTION_LABEL.test(sub.text) && !personName(sub.text) && !PUBLISHER.test(sub.text)) {
     const split = SPLIT_EDITION.exec(sub.text);
     if (split) {
-      used.add(titleAt + 1);
+      used.add(subAt);
       tp.subtitle = split[1].trim();
       tp.edition = split[2].trim();
-    } else if (!EDITION.test(sub.text)) tp.subtitle = take(titleAt + 1);
+    } else if (!EDITION.test(sub.text)) tp.subtitle = take(subAt);
   }
   // Edition and volume ("Seventh Edition · Volume Two").
   const eds = tp.edition ? [tp.edition] : [];
@@ -289,6 +318,7 @@ function composeTitlePage(tp: TitlePageBlock, lines: { text: string; heading: bo
   // Names: a line of names, or the people listed after "Edited by" / "Editors".
   let names: string[] = [];
   let collecting = false;
+  let since = 0; // lines since the last name: degrees and affiliations come between editors
   lines.forEach((l, i) => {
     if (used.has(i)) return;
     if (BY_LINE.test(l.text)) {
@@ -305,13 +335,23 @@ function composeTitlePage(tp: TitlePageBlock, lines: { text: string; heading: bo
     if (collecting && person) {
       names.push(person);
       used.add(i);
+      since = 0;
       return;
     }
-    if (collecting && names.length) collecting = false;
+    if (collecting && names.length && (++since > 8 || PUBLISHER.test(l.text))) collecting = false;
     if (!names.length && isByline(l.text)) {
       names = l.text.replace(/^by\s+/i, "").split(/\s*(?:\||&|;|·|\band\b)\s*/).filter(Boolean);
       used.add(i);
-    } else if (!tp.publisher && PUBLISHER.test(l.text) && l.text.length < 80) tp.publisher = take(i);
+    } else if (!tp.publisher && PUBLISHER.test(l.text) && l.text.length < 80) {
+      tp.publisher = take(i);
+      // "JAYPEE BROTHERS" / "MEDICAL PUBLISHERS (P) LTD": a name set over two lines.
+      const above = lines[i - 1];
+      if (above && !used.has(i - 1) && above.text === above.text.toUpperCase() && /\p{Lu}{3}/u.test(above.text) && above.text.split(" ").length <= 4) {
+        used.add(i - 1);
+        tp.publisher = `${above.text} ${tp.publisher}`;
+      }
+      tp.publisher = tidyHeading(tp.publisher);
+    }
   });
   if (names.length) tp.byline = [...new Set(names)].join(" · ");
   if (tp.subtitle) tp.subtitle = tidyHeading(tp.subtitle);
@@ -448,7 +488,7 @@ export function placeFigures(blocks: Block[]): Block[] {
 export function bookTitle(blocks: Block[], metaTitle: string | undefined): string | undefined {
   const tp = blocks.find((b): b is TitlePageBlock => b.kind === "titlepage");
   const page = tp?.title?.trim();
-  const meta = metaTitle?.trim();
+  const meta = cleanTitle(metaTitle?.trim());
   if (!page) return meta || undefined;
   const n = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
   if (meta && n(meta).includes(n(page))) return meta;
@@ -615,4 +655,29 @@ export function headingOnlyPages(blocks: Block[]): Block[] {
     else out.push({ kind: "list", id: b.id, page: b.page, rect: b.rect, chapter: b.chapter, ordered: false, items: [[{ text: b.text }]] } as Block);
   }
   return out;
+}
+
+/**
+ * A book's name from file details that are often a file name:
+ * "Color Atlas of Oral and Maxillofacial Diseases - Brad W. Neville, … - (2019) 546pp. 978-0323552257"
+ * → "Color Atlas of Oral and Maxillofacial Diseases".
+ */
+export function cleanTitle(raw: string | undefined): string | undefined {
+  if (!raw) return raw;
+  let t = raw
+    .replace(/\.(pdf|epub|docx?|html?|md|txt)$/i, "")
+    .replace(/[_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const parts = t.split(/\s+[-–—|]\s+|\s*\|\s*/);
+  const junk = (p: string) =>
+    isByline(p.replace(/,\s*/g, " | ")) ||
+    /^\(?\d{4}\)?(?:\s|$)|\b\d+\s*pp\b|\bisbn\b|\b97[89][-\d]{10,}|^\d[\d-]{8,}$|\b(?:ebook|retail|scan|ocr|libgen|z-?lib|pdf)\b/i.test(p.trim());
+  const kept = parts.filter((p, i) => i === 0 || !junk(p));
+  t = kept.join(": ");
+  t = t
+    .replace(/\s*\(\d{4}\)\s*$/, "")
+    .replace(/\s*\[[^\]]*\]\s*$/, "")
+    .trim();
+  return t || raw;
 }

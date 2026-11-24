@@ -196,80 +196,156 @@ export interface Furniture {
 }
 
 const PAGE_NUM_RE = /^(?:page\s+)?(\d{1,4}|[ivxlcdm]{1,7})$/i;
+/** Running headers that carry the page number: "xiv  Fundamentals of Oral Medicine", "Oral Cancer  197". */
+const NUM_HEADER = /^(?:(\d{1,4}|[ivxlc]{1,7})\s+(\S.{2,})|(\S.{2,}?)\s+(\d{1,4}|[ivxlc]{1,7}))$/i;
 const SLUG_RE = /\.(?:indd|qxd|qxp|fm|tex)\b|\b\d{1,2}\/\d{1,2}\/\d{2,4}\b|\b\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)\b/i;
 
 /**
- * Running headers, footers and page numbers live in the top and bottom margins
- * and repeat their style and position on many pages.
+ * Running headers, footers and page numbers — the same rules for every PDF,
+ * whatever its margins:
+ *  - only a page's edge lines are candidates: its first and last two rows,
+ *    plus anything in the outermost margin bands;
+ *  - a lone number there is the page number;
+ *  - a line whose shape repeats from page to page with only its number
+ *    changing ("xiv Fundamentals of …", "Oral Cancer 197") is a running
+ *    header or footer, and its number is the page number — provided the
+ *    numbers climb in step with the pages;
+ *  - lines repeating unchanged, or in the same style and place, are furniture;
+ *  - tiny printer's type at the edge (a slug's job number and date) is dropped;
+ *  - failing all that, a lone number standing in the outer margin, clear of
+ *    the text, is the page number.
  */
 export function findFurniture(pages: { lines: Line[]; h: number }[], stats: FontStats): Furniture {
-  // The page's outer lines, when set apart by a gap (a running header just
-  // inside a deep top margin), count as margins too.
-  const edges = new Map<Line, "top" | "bottom">();
-  for (const p of pages) {
-    // (A printer's slug below the page number doesn't make the number any less the page's edge.)
-    // Nor does printer's type far smaller than the text (a slug's job number).
-    const slugRows = new Set(p.lines.filter((l) => SLUG_RE.test(l.text) || l.size < stats.bodySize * 0.68).map((l) => Math.round(l.y)));
-    const sorted = p.lines.filter((l) => !slugRows.has(Math.round(l.y))).sort((a, b) => a.top - b.top);
-    const firstY = sorted[0]?.top;
-    const top = sorted.filter((l) => Math.abs(l.top - firstY) < 2);
-    const nextTop = sorted.find((l) => l.top > firstY + 2);
-    const topSize = Math.min(...top.map((l) => l.size), stats.bodySize);
-    if (top.length && nextTop && top[0].bottom < p.h * 0.15 && nextTop.top - Math.max(...top.map((l) => l.bottom)) > topSize * 1.2) for (const l of top) edges.set(l, "top");
-    const lastY = sorted[sorted.length - 1]?.top;
-    const bottom = sorted.filter((l) => Math.abs(l.top - lastY) < 2);
-    const prev = [...sorted].reverse().find((l) => l.top < lastY - 2);
-    if (bottom.length && prev && bottom[0].top > p.h * 0.85 && bottom[0].top - prev.bottom > bottom[0].size * 1.2) for (const l of bottom) edges.set(l, "bottom");
-  }
-  const band = (l: Line, h: number): "top" | "bottom" | null => (l.bottom < h * 0.085 ? "top" : l.top > h * 0.915 ? "bottom" : (edges.get(l) ?? null));
-  const key = (l: Line, b: string) => `${b}|${l.font}|${Math.round(l.size)}|${Math.round(l.y / 4)}`;
-  const counts = new Map<string, number>();
-  pages.forEach((p) => {
-    const keys = new Set<string>();
-    for (const l of p.lines) {
-      const b = band(l, p.h);
-      if (b) keys.add(key(l, b));
+  const body = stats.bodySize;
+  const tiny = (l: Line) => l.size < body * 0.68;
+  const printers = (r: Line[]) => r.every((l) => tiny(l) || SLUG_RE.test(l.text));
+  const shape = (t: string) =>
+    t
+      .toLowerCase()
+      .replace(/\b(?:\d{1,4}|[ivxlc]{1,7})\b/g, "#")
+      .replace(/[^\p{L}#]+/gu, " ")
+      .trim();
+  const inBand = (r: Line[], h: number) => r.every((l) => l.bottom < h * 0.085) || r.every((l) => l.top > h * 0.915);
+  const rowText = (r: Line[]) =>
+    [...r]
+      .sort((a, b) => a.x0 - b.x0)
+      .map((l) => l.text.trim())
+      .join(" ");
+
+  // 1. Each page's edge rows (lines sharing a baseline, read left to right).
+  const apart = new Set<Line[]>();
+  const edges = pages.map((p) => {
+    const rows: Line[][] = [];
+    for (const l of [...p.lines].sort((a, b) => a.y - b.y)) {
+      const row = rows[rows.length - 1];
+      if (row && Math.abs(row[0].y - l.y) < 0.35 * Math.min(row[0].size, l.size)) row.push(l);
+      else rows.push([l]);
     }
-    for (const k of keys) counts.set(k, (counts.get(k) ?? 0) + 1);
+    // Printer's type at the very edge isn't the page's edge: the real edge is just inside it.
+    const real = rows.filter((r) => !printers(r));
+    // A header or footer needs text to frame: a page of two lines has none.
+    if (real.length < 3) return rows.filter((r) => printers(r));
+    const set = new Set<Line[]>([...real.slice(0, 2), ...real.slice(-2)]);
+    // The very first and last rows, when a gap sets them apart from the text, are margin rows.
+    const gap = (a: Line[], b: Line[]) => Math.min(...b.map((l) => l.top)) - Math.max(...a.map((l) => l.bottom));
+    const size = (r: Line[]) => Math.min(...r.map((l) => l.size), body);
+    if (real.length > 2 && gap(real[0], real[1]) > size(real[0]) * 1.2) apart.add(real[0]);
+    if (real.length > 2 && gap(real[real.length - 2], real[real.length - 1]) > size(real[real.length - 1]) * 1.2) apart.add(real[real.length - 1]);
+    for (const r of rows) if (inBand(r, p.h) || (printers(r) && (r === rows[0] || r === rows[rows.length - 1]))) set.add(r);
+    return [...set];
   });
-  const minPages = Math.max(3, Math.ceil(pages.length * 0.04));
+
+  // 2. How often each shape (numbers blanked) and each style-and-place appears on page edges.
+  const shapes = new Map<string, number>();
+  const styles = new Map<string, number>();
+  const styleKey = (r: Line[], h: number) => `${r[0].top < h / 2 ? "t" : "b"}|${r[0].font}|${Math.round(r[0].size)}|${Math.round(r[0].y / 4)}`;
+  pages.forEach((p, pi) => {
+    const sh = new Set<string>();
+    const st = new Set<string>();
+    for (const r of edges[pi]) {
+      sh.add(shape(rowText(r)));
+      if (inBand(r, p.h) || apart.has(r)) st.add(styleKey(r, p.h));
+    }
+    for (const k of sh) shapes.set(k, (shapes.get(k) ?? 0) + 1);
+    for (const k of st) styles.set(k, (styles.get(k) ?? 0) + 1);
+  });
+  const repeated = Math.max(3, pages.length < 30 ? 3 : Math.ceil(pages.length * 0.04));
+
+  // 3. Numbered headers count only if their numbers climb with the pages (the offset stays put).
+  const offsets = new Map<string, Set<number>>();
+  pages.forEach((_, pi) => {
+    for (const r of edges[pi]) {
+      const m = NUM_HEADER.exec(rowText(r));
+      const n = m ? toNumber(m[1] ?? m[4]) : null;
+      if (n === null || r.some((l) => l.size > body * 1.8)) continue;
+      const k = shape(rowText(r));
+      offsets.set(k, (offsets.get(k) ?? new Set()).add(n - pi));
+    }
+  });
+  const steady = (k: string) => (shapes.get(k) ?? 0) >= 2 && (offsets.get(k)?.size ?? 99) <= 2;
+
   const drop = new Set<Line>();
   const labels = new Map<number, string>();
   pages.forEach((p, pi) => {
-    // A printer's slug ("Book_FM.indd 7  8/29/19  11:21 AM") is furniture, and its number isn't the page's.
-    const slugRows = new Set(p.lines.filter((l) => SLUG_RE.test(l.text)).map((l) => Math.round(l.y)));
-    let best: { text: string; size: number } | null = null;
-    for (const l of p.lines) {
-      const b = band(l, p.h);
-      if (!b) continue;
-      const text = l.text.trim();
-      const slug = slugRows.has(Math.round(l.y));
-      const isNum = PAGE_NUM_RE.test(text) && l.size <= stats.bodySize * 1.3 && l.size >= stats.bodySize * 0.68;
-      if (slug || isNum || (counts.get(key(l, b)) ?? 0) >= minPages) {
-        drop.add(l);
-        if (isNum && !slug && (!best || l.size > best.size)) best = { text: text.replace(/^page\s+/i, ""), size: l.size };
+    let lone: { text: string; size: number } | null = null;
+    let fromHeader: string | null = null;
+    for (const r of edges[pi]) {
+      const text = rowText(r);
+      // (Headers and page numbers may be set larger than the text; chapter numbers are far larger.)
+      const big = r.some((l) => l.size > body * 1.8);
+      if (printers(r) || SLUG_RE.test(text)) {
+        for (const l of r) drop.add(l);
+        continue;
+      }
+      if (PAGE_NUM_RE.test(text) && !big) {
+        for (const l of r) drop.add(l);
+        if (!lone || r[0].size > lone.size) lone = { text: text.replace(/^page\s+/i, ""), size: r[0].size };
+        continue;
+      }
+      const m = NUM_HEADER.exec(text);
+      const k = shape(text);
+      if (m && !big && steady(k)) {
+        for (const l of r) drop.add(l);
+        fromHeader ??= m[1] ?? m[4];
+        continue;
+      }
+      if (((shapes.get(k) ?? 0) >= repeated && text.length < 100) || ((inBand(r, p.h) || apart.has(r)) && r.every((l) => l.size <= body * 1.15) && (styles.get(styleKey(r, p.h)) ?? 0) >= repeated)) for (const l of r) drop.add(l);
+    }
+    let label = lone?.text ?? fromHeader;
+    // 4. Failing that: a lone number halfway down the outer margin, clear of the text.
+    if (!label) {
+      const text = p.lines.filter((l) => l.text.trim().length > 20);
+      if (text.length >= 5) {
+        const left = Math.min(...text.map((l) => l.x0));
+        const right = Math.max(...text.map((l) => l.x1));
+        const outer = p.lines.filter(
+          (l) =>
+            PAGE_NUM_RE.test(l.text.trim()) &&
+            !tiny(l) &&
+            l.size <= body * 1.3 &&
+            (l.x1 < left - 15 || l.x0 > right + 15) &&
+            !p.lines.some((o) => o !== l && Math.abs(o.y - l.y) < l.size && Math.max(o.x0 - l.x1, l.x0 - o.x1) < 20),
+        );
+        if (outer.length === 1) {
+          drop.add(outer[0]);
+          label = outer[0].text.trim();
+        }
       }
     }
-    // Some designs print the page number halfway down the outer margin, clear of the text.
-    const body = p.lines.filter((l) => l.text.trim().length > 20);
-    if (body.length >= 5) {
-      const left = Math.min(...body.map((l) => l.x0));
-      const right = Math.max(...body.map((l) => l.x1));
-      // Exactly one such number, alone on its line (numbers ending contents lines don't count).
-      const outer = p.lines.filter((l) => {
-        const text = l.text.trim();
-        if (!PAGE_NUM_RE.test(text) || l.size < stats.bodySize * 0.68 || l.size > stats.bodySize * 1.3) return false;
-        if (!(l.x1 < left - 15 || l.x0 > right + 15)) return false;
-        return !p.lines.some((o) => o !== l && Math.abs(o.y - l.y) < l.size && Math.max(o.x0 - l.x1, l.x0 - o.x1) < 20);
-      });
-      if (outer.length === 1) {
-        drop.add(outer[0]);
-        best ??= { text: outer[0].text.trim(), size: outer[0].size };
-      }
-    }
-    if (best) labels.set(pi, best.text);
+    if (label) labels.set(pi, label);
   });
   return { drop, labels };
+}
+
+/** "17" → 17, "xiv" → 14. */
+function toNumber(t: string): number | null {
+  if (/^\d+$/.test(t)) return Number(t);
+  const v: Record<string, number> = { i: 1, v: 5, x: 10, l: 50, c: 100 };
+  const s = t.toLowerCase();
+  if (!/^[ivxlc]+$/.test(s)) return null;
+  let n = 0;
+  for (let i = 0; i < s.length; i++) n += v[s[i]] < (v[s[i + 1]] ?? 0) ? -v[s[i]] : v[s[i]];
+  return n;
 }
 
 /** Anything that takes part in reading order: a line, or a figure/table/box region. */

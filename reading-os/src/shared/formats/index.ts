@@ -7,7 +7,7 @@ import { unzipSync } from "fflate";
 import { EXTRACTOR_VERSION, blockText, type Block, type BookDoc, type BookFormat, type PageInfo } from "../model.ts";
 import { assignChapters, buildToc, linkReferences } from "../pdf/analyze.ts";
 import { countWords } from "../pdf/text.ts";
-import { bookTitle, normalizeStructure, placeFigures } from "../normalize.ts";
+import { bookTitle, cleanTitle, normalizeStructure, placeFigures } from "../normalize.ts";
 import { HtmlConverter, normalizeHeadings } from "./html.ts";
 import { textToBlocks } from "./text.ts";
 
@@ -120,7 +120,7 @@ function finish(
     version: EXTRACTOR_VERSION,
     format,
     id: meta.id,
-    title: bookTitle(blocks, title) || (firstHeading?.kind === "heading" && firstHeading.text.length < 90 ? firstHeading.text : titleFromFile(meta.fileName)),
+    title: bookTitle(blocks, title) || (firstHeading?.kind === "heading" && firstHeading.text.length < 90 ? firstHeading.text : cleanTitle(titleFromFile(meta.fileName))!),
     author: author?.trim() || undefined,
     fileName: meta.fileName,
     pageCount: pages.length,
