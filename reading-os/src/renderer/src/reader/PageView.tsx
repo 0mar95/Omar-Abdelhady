@@ -126,8 +126,9 @@ const PageSlot = memo(function PageSlot({
     let cancelled = false;
     let task: { cancel(): void; promise: Promise<void> } | null = null;
     (async () => {
-      const page = await doc.getPage(index + 1);
-      if (cancelled) return;
+      // A damaged page stays blank instead of breaking the view.
+      const page = await doc.getPage(index + 1).catch(() => null);
+      if (cancelled || !page) return;
       const scale = width / page.getViewport({ scale: 1 }).width;
       const viewport = page.getViewport({ scale });
       const dpr = Math.min(2.5, window.devicePixelRatio || 1);

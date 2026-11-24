@@ -21,10 +21,22 @@ export async function extractFromDocument(
 ): Promise<BookDoc> {
   const started = Date.now();
   const raw: RawPage[] = [];
+  let failed = 0;
+  let lastError: unknown;
   for (let i = 0; i < doc.numPages; i++) {
-    raw.push(await loadPage(doc, i, pdfjs));
+    try {
+      raw.push(await loadPage(doc, i, pdfjs));
+    } catch (e) {
+      // A damaged page shouldn't stop the whole book: keep its place, empty.
+      failed++;
+      lastError = e;
+      const prev = raw[raw.length - 1];
+      raw.push({ index: i, w: prev?.w ?? 612, h: prev?.h ?? 792, runs: [], graphics: [] });
+    }
     if (onProgress && (i % 4 === 0 || i === doc.numPages - 1)) onProgress({ phase: "reading", done: i + 1, total: doc.numPages });
   }
+  if (failed === doc.numPages) throw lastError instanceof Error ? lastError : new Error("None of this PDF's pages could be read.");
+  if (failed) console.warn(`${failed} of ${doc.numPages} pages couldn't be read and were left empty`);
   onProgress?.({ phase: "analyzing", done: 0, total: 1 });
   let title: string | undefined;
   let author: string | undefined;
