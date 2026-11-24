@@ -442,6 +442,22 @@ function BlockInner({ b }: { b: Block }) {
       );
     case "contents":
       return <Contents b={b} />;
+    case "imprint":
+      return (
+        <details className="group my-8 rounded-lg border border-rule font-ui">
+          <summary className="cursor-pointer list-none px-4 py-3 text-[0.8em] font-semibold text-ink-2 hover:text-ink">
+            <span className="mr-2 inline-block transition-transform group-open:rotate-90">›</span>
+            Publication details <span className="font-normal text-ink-3">· copyright, ISBN, cataloguing</span>
+          </summary>
+          <div className="space-y-1.5 border-t border-rule px-4 py-3 text-[0.72em] leading-snug text-ink-2">
+            {b.lines.map((l, i) => (
+              <p key={i} className="!m-0">
+                {l}
+              </p>
+            ))}
+          </div>
+        </details>
+      );
     case "code":
       return (
         <pre className="scroll-quiet my-5 overflow-x-auto rounded-lg bg-paper-2 px-4 py-3 font-mono text-[0.78em] leading-relaxed text-ink ring-1 ring-rule/60">
@@ -458,7 +474,7 @@ export const BlockView = memo(function BlockView({ b, pageLabel, flow }: { b: Bl
       {pageLabel && (
         // A zero-height sibling: blocks clip their own overflow (content-visibility).
         <div className="page-anchor" aria-hidden>
-          <span className="page-marker" data-goto-page={b.page} title={`Page ${pageLabel} in the original — click to view it`}>
+          <span className="page-marker" title={`Page ${pageLabel} in the printed book`}>
             {pageLabel}
           </span>
         </div>

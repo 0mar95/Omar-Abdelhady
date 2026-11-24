@@ -55,7 +55,7 @@ export function Hovercards({ root }: { root: React.RefObject<HTMLElement | null>
     };
     const click = (e: MouseEvent) => {
       const node = e.target as Element;
-      const { jumpTo, ix, setView } = useReader.getState();
+      const { jumpTo, ix } = useReader.getState();
       const xref = node.closest<HTMLElement>(".xref");
       if (xref && ix) {
         const id = ix.byKey.get(xref.dataset.xref ?? "");
@@ -66,12 +66,6 @@ export function Hovercards({ root }: { root: React.RefObject<HTMLElement | null>
       const pageRef = node.closest<HTMLElement>("[data-page].pageref");
       if (pageRef) {
         jumpTo({ page: Number(pageRef.dataset.page) });
-        return;
-      }
-      const marker = node.closest<HTMLElement>("[data-goto-page]");
-      if (marker) {
-        setView("page");
-        jumpTo({ page: Number(marker.dataset.gotoPage) });
         return;
       }
       const pinned = node.closest<HTMLElement>("sup.cite, .term");

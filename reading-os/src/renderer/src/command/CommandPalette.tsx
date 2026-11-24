@@ -151,13 +151,6 @@ export function CommandPalette({ onOpenFile, onLibrary }: { onOpenFile(): void; 
         { id: "c-recap-book", group: "Commands", title: "Recap the book so far", icon: <IconSparkle />, run: () => openRecap("book") },
         { id: "c-type", group: "Commands", title: "Reading settings (font, size, theme, AI)", icon: <IconType />, run: () => setOverlay("type") },
         {
-          id: "c-view",
-          group: "Commands",
-          title: useReader.getState().view === "clean" ? "Switch to original pages" : "Switch to clean reading view",
-          icon: <IconPage />,
-          run: () => setView(useReader.getState().view === "clean" ? "page" : "clean"),
-        },
-        {
           id: "c-notes",
           group: "Commands",
           title: useSettings.getState().marginNotes ? "Hide margin notes" : "Show margin notes",

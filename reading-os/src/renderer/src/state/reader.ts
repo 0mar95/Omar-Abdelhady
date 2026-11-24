@@ -204,10 +204,9 @@ export const useReader = create<ReaderStore>((set, get) => ({
     set({ status: "idle", book: null, ix: null, doc: null, entry: null, overlay: null, jump: null });
   },
 
-  setView(view) {
-    const f = get().book?.format;
-    if (view === "page" && f && f !== "pdf") return;
-    set({ view });
+  // One way to read: the clean book. (The original-pages view was retired.)
+  setView() {
+    set({ view: "clean" });
   },
 
   setOverlay(overlay) {

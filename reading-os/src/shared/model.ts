@@ -3,7 +3,7 @@
 // the page and rectangle it came from so the original page can always be shown.
 
 /** Bump whenever extraction output changes so cached books are re-extracted. */
-export const EXTRACTOR_VERSION = 10;
+export const EXTRACTOR_VERSION = 11;
 
 /** Rectangle in PDF points, origin at the top-left of the page. */
 export interface Rect {
@@ -141,6 +141,12 @@ export interface ContentsEntry {
   authors?: string;
 }
 
+/** The copyright and cataloguing page(s): kept, but folded away. */
+export interface ImprintBlock extends BlockBase {
+  kind: "imprint";
+  lines: string[];
+}
+
 /** Program code or other preformatted text, line by line. */
 export interface CodeBlock extends BlockBase {
   kind: "code";
@@ -158,7 +164,8 @@ export type Block =
   | ReferencesBlock
   | IndexBlock
   | ContentsBlock
-  | CodeBlock;
+  | CodeBlock
+  | ImprintBlock;
 
 export interface PageInfo {
   w: number;
@@ -239,6 +246,7 @@ export function blockText(b: Block): string {
     case "index":
       return b.lines.join("\n");
     case "code":
+    case "imprint":
       return b.lines.join("\n");
     case "contents":
       return b.entries.map((e) => [e.num, e.title, e.page].filter(Boolean).join(" ")).join("\n");

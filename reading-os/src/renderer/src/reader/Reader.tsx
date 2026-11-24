@@ -5,12 +5,11 @@ import { platform } from "../platform";
 import { useNotes } from "../state/notes";
 import { useReader } from "../state/reader";
 import { useSettings } from "../state/settings";
-import { IconBook, IconLibrary, IconPage, IconSearch, IconToc, IconType } from "../ui/icons";
+import { IconLibrary, IconSearch, IconToc, IconType } from "../ui/icons";
 import { CleanView } from "./CleanView";
 import { Hovercards } from "./Hovercards";
 import { GlossarySheet } from "./GlossarySheet";
 import { TocSheet, TypePanel, ZoomOverlay } from "./Overlays";
-import { PageView } from "./PageView";
 import { RecapPanel } from "./RecapPanel";
 import { openRecap } from "../state/recap";
 import { SelectionMenu } from "./SelectionMenu";
@@ -23,7 +22,6 @@ export function Reader({ onOpenFile, onLibrary }: { onOpenFile(): void; onLibrar
   // it on their own, so scrolling never re-renders the book.
   const book = useReader((s) => s.book)!;
   const ix = useReader((s) => s.ix)!;
-  const view = useReader((s) => s.view);
   const overlay = useReader((s) => s.overlay);
   const { setOverlay, setView, jumpTo } = useReader.getState();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -60,7 +58,7 @@ export function Reader({ onOpenFile, onLibrary }: { onOpenFile(): void; onLibrar
     };
   }, []);
 
-  // Keyboard: ⌘K palette, T contents, G glossary, R recap, V view, [ ] chapters, ⌘+/⌘- size.
+  // Keyboard: ⌘K palette, T contents, G glossary, R recap, [ ] chapters, ⌘+/⌘- size.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
@@ -95,8 +93,7 @@ export function Reader({ onOpenFile, onLibrary }: { onOpenFile(): void; onLibrar
       } else if (e.key === "r") {
         e.preventDefault();
         openRecap();
-      } else if (e.key === "v") setView(useReader.getState().view === "clean" ? "page" : "clean");
-      else if (e.key === "]" || e.key === "[") {
+      } else if (e.key === "]" || e.key === "[") {
         const cur = ix.byId.get(useReader.getState().currentBlock ?? "") ?? 0;
         const ch = book.blocks[cur]?.chapter ?? 0;
         // "[" goes to the start of this chapter, or the previous one if already there.
@@ -110,16 +107,6 @@ export function Reader({ onOpenFile, onLibrary }: { onOpenFile(): void; onLibrar
     return () => window.removeEventListener("keydown", onKey);
   }, [book, ix, setOverlay, setView, jumpTo]);
 
-  // Keep position when switching between clean text and original pages.
-  const firstRender = useRef(true);
-  useEffect(() => {
-    if (firstRender.current) {
-      firstRender.current = false;
-      return;
-    }
-    const cur = useReader.getState().currentBlock;
-    if (cur) jumpTo({ blockId: cur });
-  }, [view, jumpTo]);
 
   const showChrome = chrome || !!overlay;
   return (
@@ -142,23 +129,13 @@ export function Reader({ onOpenFile, onLibrary }: { onOpenFile(): void; onLibrar
           <IconSearch size={14} /> Search or ask
           <kbd className="rounded border border-rule px-1 text-[10.5px]">{isMac ? "⌘K" : "Ctrl K"}</kbd>
         </button>
-        {(!book.format || book.format === "pdf") && (
-        <div className="flex rounded-lg bg-paper-2 p-0.5 [-webkit-app-region:no-drag]" role="group" aria-label="View">
-          <ViewButton active={view === "clean"} label="Clean text" onClick={() => setView("clean")}>
-            <IconBook size={16} />
-          </ViewButton>
-          <ViewButton active={view === "page"} label="Original pages" onClick={() => setView("page")}>
-            <IconPage size={16} />
-          </ViewButton>
-        </div>
-        )}
         <BarButton label="Reading settings" onClick={() => setOverlay(overlay === "type" ? null : "type")}>
           <IconType />
         </BarButton>
       </header>
 
       <div ref={scrollRef} className="scroll-quiet h-full overflow-y-auto" data-testid="reader-scroll">
-        {view === "clean" ? <CleanView scrollRef={scrollRef} /> : <PageView scrollRef={scrollRef} />}
+        <CleanView scrollRef={scrollRef} />
       </div>
 
       <ReaderFooter visible={showChrome} />
@@ -189,20 +166,6 @@ function BarButton({ label, onClick, children }: { label: string; onClick(): voi
   );
 }
 
-function ViewButton({ active, label, onClick, children }: { active: boolean; label: string; onClick(): void; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      aria-pressed={active}
-      onClick={onClick}
-      className={`grid h-7 w-8 place-items-center rounded-md ${active ? "bg-card text-ink shadow-sm" : "text-ink-3 hover:text-ink"}`}
-    >
-      {children}
-    </button>
-  );
-}
 
 /** Where the reader is, from the current block: chapter, progress, time left. */
 function useProgress() {

@@ -43,7 +43,6 @@ export function App() {
         if (action === "open") void openFile();
         else if (action === "library") toLibrary();
         else if (action === "palette") r.setOverlay(r.overlay === "palette" ? null : "palette");
-        else if (action === "toggle-view" && r.book) r.setView(r.view === "clean" ? "page" : "clean");
       }),
     [openFile, toLibrary],
   );

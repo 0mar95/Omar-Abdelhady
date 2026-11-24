@@ -119,7 +119,6 @@ function buildMenu(): void {
       label: "View",
       submenu: [
         { label: "Command Palette", accelerator: "CmdOrCtrl+K", click: () => send("palette") },
-        { label: "Toggle Page View", accelerator: "CmdOrCtrl+Shift+V", click: () => send("toggle-view") },
         { type: "separator" },
         { role: "togglefullscreen" },
         { role: "reload" },

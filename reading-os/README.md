@@ -62,13 +62,8 @@ search, Ask, the glossary, margin notes and the inline AI. EPUB chapters follow
 the book's own table of contents, and its images, tables and sidebars are kept;
 Word headings, lists, tables and pictures come across; plain text has its
 wrapped lines joined and "CHAPTER IV"-style headings found (Project
-Gutenberg's license header and footer are left out). Only the original-pages
-view is PDF-only. Copy-protected (DRM) books can't be opened, and images are
+Gutenberg's license header and footer are left out). Copy-protected (DRM) books can't be opened, and images are
 never fetched from the web.
-
-**Page view** — the original pages, with selectable text (**V** to toggle;
-your place is kept). Sepia and dark themes recolor the page and its text and
-diagrams, but photos and illustrations keep their real colors.
 
 **Inline AI** — select text and choose **Explain**, **Simplify**,
 **Summarize**, **Key terms** or **Ask…**. The answer streams into a card right
@@ -130,7 +125,6 @@ is cached locally, and the AI only talks to Ollama on `localhost`.
 | T | Table of contents |
 | G | Glossary (A–Z) |
 | R | Catch me up (recap of what you've read) |
-| V | Clean view ↔ original pages |
 | [ / ] | Previous / next chapter |
 | ⌘+ / ⌘− | Text size |
 | ⌘O | Open a PDF |
@@ -225,7 +219,7 @@ reading-os/
       ├─ state/                settings, library, open book, notes, glossary
       ├─ library/              library screen
       ├─ command/              ⌘K palette
-      └─ reader/               clean view, page view, blocks, selection menu,
+      └─ reader/               clean view, blocks, selection menu,
                                inline cards, margin notes, hover cards (citations,
                                figures, glossary terms), glossary sheet, overlays
 ```

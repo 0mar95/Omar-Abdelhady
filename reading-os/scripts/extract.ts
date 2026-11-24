@@ -82,6 +82,8 @@ const render = (b: Block): string => {
       return `<details>${pg}<summary>${esc(b.title)} (${b.lines.length} lines)</summary><pre>${esc(b.lines.join("\n"))}</pre></details>`;
     case "code":
       return `<pre>${pg}${esc(b.lines.join("\n"))}</pre>`;
+    case "imprint":
+      return `<details>${pg}<summary>Publication details</summary>${b.lines.map((l) => `<p><small>${esc(l)}</small></p>`).join("")}</details>`;
     case "contents":
       return `<ol class=toc>${pg}${b.entries.map((e) => `<li>${e.num ? `<b>${esc(e.num)}</b> ` : ""}${esc(e.title)} <small>${esc(e.page)}</small></li>`).join("")}</ol>`;
   }

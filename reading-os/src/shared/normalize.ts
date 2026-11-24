@@ -57,6 +57,8 @@ export function normalizeStructure(input: Block[], totalWords?: number): Block[]
   }
   blocks = merged;
 
+  blocks = inlineAddresses(blocks);
+  blocks = tidyOpening(blocks);
   blocks = stitchSentences(blocks);
 
   // The same heading twice in a row (a running title repeated) shows once.
@@ -85,6 +87,134 @@ export function normalizeStructure(input: Block[], totalWords?: number): Block[]
     b.level = to as HeadingBlock["level"];
   }
   return blocks;
+}
+
+// Words only a copyright / cataloguing page uses.
+const IMPRINT = [
+  /\bISBN\b/i,
+  /library of congress/i,
+  /british library/i,
+  /cataloging|cataloguing/i,
+  /all rights reserved/i,
+  /(?:©|\(c\)|copyright)\s*(?:©\s*)?(?:19|20)\d\d/i,
+  /first published|this edition (?:first )?published|reprinted/i,
+  /printed (?:and bound )?in\b/i,
+  /no part of this (?:publication|book)/i,
+  /\bpermission\b.*\bpublisher\b/i,
+  /permission is granted to copy/i,
+  /creative commons|gnu free documentation licen[cs]e/i,
+  /typeset|set in \d/i,
+];
+
+/**
+ * The opening pages read like a book's, whatever the source: the copyright
+ * and cataloguing page folds into one "Publication details" block, and the
+ * title pages keep a single title — the title repeated on the half-title
+ * page and the names and degrees under it are text, not chapters.
+ */
+export function tidyOpening(blocks: Block[]): Block[] {
+  if (!blocks.length) return blocks;
+  const firstPage = blocks[0].page;
+  const pages = new Map<number, Block[]>();
+  for (const b of blocks) {
+    if (b.page - firstPage > 30) break;
+    pages.set(b.page, [...(pages.get(b.page) ?? []), b]);
+  }
+  // Imprint pages: early pages that hit several imprint markers.
+  const imprint = new Set<number>();
+  for (const [page, bs] of pages) {
+    if (bs.some((b) => b.kind === "contents")) continue;
+    const text = bs.map(blockText).join("\n");
+    if (IMPRINT.filter((re) => re.test(text)).length >= 2) imprint.add(page);
+  }
+  // The title pages: everything before the imprint or contents page, if it comes early.
+  const contentsAt = blocks.find((b) => b.kind === "contents" && b.page - firstPage <= 30)?.page;
+  const firstImprint = imprint.size ? Math.min(...imprint) : undefined;
+  // (A preface or foreword before a late contents page keeps its heading.)
+  const openingEnd = firstImprint ?? (contentsAt !== undefined && contentsAt - firstPage <= 8 ? contentsAt : Infinity);
+  if (!imprint.size && openingEnd === Infinity) return blocks;
+
+  const out: Block[] = [];
+  const seen = new Set<string>();
+  let title: string | null = null;
+  let folded: Block & { kind: "imprint" } | null = null;
+  for (const b of blocks) {
+    if (imprint.has(b.page) && b.kind !== "figure") {
+      const lines = blockLines(b).filter((l) => /[\p{L}\p{N}]{2,}/u.test(l));
+      if (!folded) {
+        folded = { kind: "imprint", id: b.id, page: b.page, rect: b.rect, chapter: b.chapter, lines: [] };
+        out.push(folded);
+      }
+      for (const l of lines) {
+        const prev = folded.lines[folded.lines.length - 1];
+        // Rejoin lines a narrow page broke apart ("The" / "LATEX" / "source").
+        if (prev && !/[.:;)\]]$/.test(prev) && (/^\p{Ll}/u.test(l) || prev.split(" ").length <= 3 || /\/$/.test(prev)))
+          folded.lines[folded.lines.length - 1] = prev + (/\/$/.test(prev) ? "" : " ") + l;
+        else folded.lines.push(l);
+      }
+      continue;
+    }
+    // The half-title page repeats the title page: show its lines once.
+    if (b.page < openingEnd && b.kind === "paragraph") {
+      const key = spansText(b.spans).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+      if (key && seen.has(key)) continue;
+      seen.add(key);
+    }
+    if (b.page < openingEnd && b.kind === "heading") {
+      const key = b.text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+      if (title === null) {
+        title = key;
+        seen.add(key);
+        out.push({ ...b, level: 1 });
+        continue;
+      }
+      if (key === title) continue; // the half-title page
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ kind: "paragraph", id: b.id, page: b.page, rect: b.rect, chapter: b.chapter, spans: [{ text: b.text, b: b.level <= 2 }] });
+      continue;
+    }
+    out.push(b);
+  }
+  return out;
+}
+
+const ADDRESS = /^(?:https?:\/\/|\/\/|www\.)\S+$|^[\w.-]+\.(?:com|org|net|edu|io|gov|ac\.uk|co\.uk)(?:\/\S*)?\.?$/i;
+
+/**
+ * A web address set on a line of its own in a typewriter font is part of the
+ * sentence around it, not a program listing.
+ */
+function inlineAddresses(blocks: Block[]): Block[] {
+  const out: Block[] = [];
+  for (const b of blocks) {
+    const line = b.kind === "code" && b.lines.length === 1 ? b.lines[0].trim() : "";
+    if (!line || !ADDRESS.test(line)) {
+      out.push(b);
+      continue;
+    }
+    const prev = out[out.length - 1];
+    const prevText = prev?.kind === "paragraph" ? spansText(prev.spans).trimEnd() : "";
+    if (prev?.kind === "paragraph" && prevText && !/[.!?]["”’)]*$/.test(prevText)) {
+      const tight = /https?:$/.test(prevText); // "https:" + "//example.org" broken across lines
+      const last = prev.spans[prev.spans.length - 1];
+      if (tight) last.text = last.text.trimEnd();
+      else if (!/\s$/.test(last.text)) prev.spans.push({ text: " " });
+      if (tight && last.code) last.text += line;
+      else prev.spans.push({ text: line, code: true });
+      continue;
+    }
+    out.push({ kind: "paragraph", id: b.id, page: b.page, rect: b.rect, chapter: b.chapter, spans: [{ text: line, code: true }] });
+  }
+  return out;
+}
+
+function blockLines(b: Block): string[] {
+  if (b.kind === "list") return b.items.map((it, i) => `${i + 1}. ${spansText(it).trim()}`);
+  return blockText(b)
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
 }
 
 const ENDED = /[.!?:;]["”’)\]]*$/;
