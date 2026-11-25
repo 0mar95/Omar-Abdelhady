@@ -78,10 +78,10 @@ export function TocSheet() {
 }
 
 const THEMES: { id: Theme; label: string; bg: string; fg: string }[] = [
-  { id: "light", label: "Light", bg: "#fbfaf7", fg: "#1f1d1a" },
-  { id: "sepia", label: "Sepia", bg: "#f6efe2", fg: "#3a2f23" },
-  { id: "dark", label: "Dark", bg: "#1c1b19", fg: "#e6e1d8" },
-  { id: "black", label: "Black", bg: "#000000", fg: "#d9d6d0" },
+  { id: "sepia", label: "Paper", bg: "#f2ebdf", fg: "#1f1c18" },
+  { id: "light", label: "White", bg: "#fbf8f2", fg: "#1f1c18" },
+  { id: "dark", label: "Night", bg: "#1b1916", fg: "#ece4d6" },
+  { id: "black", label: "Black", bg: "#000000", fg: "#ddd6ca" },
 ];
 
 const SPACING = [

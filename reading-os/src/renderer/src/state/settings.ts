@@ -33,7 +33,12 @@ export interface Settings {
   catchUp: boolean;
   /** Dim everything but the paragraph being read. */
   focus: boolean;
+  /** Which design the saved reading settings belong to (see LOOK). */
+  look?: number;
 }
+
+/** Bumped when Kenning's look changes: saved type and paper move to the new defaults once. */
+export const LOOK = 2;
 
 export const DEFAULT_SETTINGS: Settings = {
   theme: "sepia",
@@ -52,6 +57,7 @@ export const DEFAULT_SETTINGS: Settings = {
   spoilerLimit: false,
   catchUp: true,
   focus: false,
+  look: LOOK,
 };
 
 interface SettingsStore extends Settings {
@@ -70,6 +76,13 @@ export const useSettings = create<SettingsStore>((set, get) => ({
   },
   async load() {
     const saved = await platform.stateGet<Partial<Settings>>("settings");
-    set({ ...DEFAULT_SETTINGS, ...(saved ?? {}), loaded: true });
+    let merged: Settings = { ...DEFAULT_SETTINGS, ...(saved ?? {}) };
+    if (saved && (saved.look ?? 0) < LOOK) {
+      // A new look: carry over everything except the type and paper, which it redefines.
+      const { theme, font, size, leading } = DEFAULT_SETTINGS;
+      merged = { ...merged, font, size, leading, look: LOOK, theme: saved.theme === "dark" || saved.theme === "black" ? saved.theme : theme };
+      void platform.stateSet("settings", merged);
+    }
+    set({ ...merged, loaded: true });
   },
 }));
