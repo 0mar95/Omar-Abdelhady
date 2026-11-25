@@ -52,7 +52,19 @@ export interface ReadingOSApi extends LibraryApi, GlossaryApi {
   aiAbort(id: string): Promise<void>;
   onAiChunk(cb: (chunk: ChatChunk) => void): () => void;
   onMenu(cb: (action: string) => void): () => void;
+  voiceStatus(): Promise<VoiceStatus>;
+  /** Downloads (first time) and loads the natural voices. */
+  voicePrepare(): Promise<VoiceStatus>;
+  voiceSpeak(text: string, voice: string, speed: number): Promise<{ rate: number; pcm: Float32Array }>;
+  voiceCancel(): void;
+  onVoiceStatus(cb: (s: VoiceStatus) => void): () => void;
 }
+
+/** The natural (neural) voices used by Listen. */
+export type VoiceStatus =
+  | { state: "missing" | "downloaded" | "ready" }
+  | { state: "loading"; progress: number }
+  | { state: "error"; message: string };
 
 // ---------- Phase 2: library index, search, margin notes ----------
 

@@ -595,8 +595,116 @@ button {
 .listen-bar select option {
   color: #211f1c;
 }
-.listen-bar .voice {
-  max-width: 150px;
+.listen-bar .where.busy {
+  animation: breathe 1.6s ease-in-out infinite;
+}
+@keyframes breathe {
+  50% {
+    opacity: 0.45;
+  }
+}
+.listen-bar .voice-btn {
+  width: auto;
+  height: 30px;
+  padding: 0 0.8rem;
+  border: 1px solid rgb(255 255 255 / 0.2);
+  font-family: var(--title-font);
+  font-style: italic;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.voice-menu {
+  position: absolute;
+  right: -3rem;
+  bottom: calc(100% + 14px);
+  width: 300px;
+  max-height: min(70vh, 560px);
+  overflow-y: auto;
+  padding: 0.5rem;
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  box-shadow: var(--shadow);
+  text-align: left;
+}
+.voice-menu section + section {
+  margin-top: 0.4rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--rule);
+}
+.voice-menu h4 {
+  margin: 0.35rem 0.5rem 0.3rem;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.listen-bar .voice-menu button {
+  display: flex;
+  width: 100%;
+  height: auto;
+  place-items: initial;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: 6px;
+  color: var(--ink);
+}
+.listen-bar .voice-menu button:hover {
+  background: var(--paper-2);
+}
+.listen-bar .voice-menu button.on {
+  background: var(--accent-soft);
+}
+.voice-menu .name {
+  font-family: var(--title-font);
+  font-size: 15.5px;
+}
+.voice-menu .note {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+.voice-menu .offer,
+.voice-menu .tip {
+  padding: 0.2rem 0.55rem 0.4rem;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+.voice-menu .offer p {
+  margin: 0 0 0.55rem;
+  font-family: var(--title-font);
+  font-style: italic;
+  font-size: 14.5px;
+  color: var(--pencil);
+}
+.voice-menu .offer .err {
+  color: var(--accent);
+  font-style: normal;
+  font-family: var(--ui-font);
+  font-size: 12.5px;
+}
+.listen-bar .voice-menu .get {
+  justify-content: center;
+  border-radius: 999px;
+  background: #7a2a1f;
+  color: #fff;
+  font-weight: 500;
+  padding: 0.55rem 0.9rem;
+}
+.listen-bar .voice-menu .get:hover {
+  background: #8d3326;
+}
+.listen-bar .voice-menu .get:disabled {
+  opacity: 0.8;
+}
+.voice-menu .tip {
+  margin: 0.3rem 0 0;
+  font-size: 11.5px;
+  color: var(--ink-3);
 }
 
 /* Figure explainer: a small button beside the caption. */

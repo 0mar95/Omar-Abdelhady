@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
-import type { ChatChunk, ChatRequest, GlossaryEvent, IndexStatus, NoteEvent, ReadingOSApi } from "../shared/ipc";
+import type { ChatChunk, ChatRequest, GlossaryEvent, IndexStatus, NoteEvent, ReadingOSApi, VoiceStatus } from "../shared/ipc";
 
 const api: ReadingOSApi = {
   platform: process.platform,
@@ -43,6 +43,15 @@ const api: ReadingOSApi = {
     return () => ipcRenderer.removeListener("glossary:event", listener);
   },
   glossaryMentions: (phrases, exclude) => ipcRenderer.invoke("glossary:mentions", phrases, exclude),
+  voiceStatus: () => ipcRenderer.invoke("voice:status"),
+  voicePrepare: () => ipcRenderer.invoke("voice:prepare"),
+  voiceSpeak: (text, voice, speed) => ipcRenderer.invoke("voice:speak", text, voice, speed),
+  voiceCancel: () => ipcRenderer.send("voice:cancel"),
+  onVoiceStatus: (cb) => {
+    const listener = (_: unknown, s: VoiceStatus) => cb(s);
+    ipcRenderer.on("voice:status", listener);
+    return () => ipcRenderer.removeListener("voice:status", listener);
+  },
   onMenu: (cb) => {
     const listener = (_: unknown, action: string) => cb(action);
     ipcRenderer.on("menu", listener);

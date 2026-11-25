@@ -6,6 +6,7 @@ import type { AiConfig, ChatRequest, DefineRequest, SearchParams } from "../shar
 import { EXTRACTOR_VERSION, type BookDoc } from "../shared/model";
 import { DEFINITION_SCHEMA, LibraryIndex, NOTE_SCHEMA, definitionMessages, noteMessages, type NoteDraft } from "./library";
 import * as ollama from "./ollama";
+import * as voice from "./voice";
 
 // One name everywhere, so settings and the book cache live in the same
 // folder however the app is launched (~/Library/Application Support/Kenning).
@@ -220,6 +221,10 @@ function registerIpc(): void {
   ipcMain.handle("glossary:define", (_e, bookId: string, req: DefineRequest) => library!.requestDefinition(bookId, req));
   ipcMain.handle("glossary:mentions", (_e, phrases: string[], exclude: string) => library!.mentions(phrases, exclude));
   ipcMain.handle("reader:position", (_e, bookId: string, blockIndex: number) => library?.setPosition(bookId, blockIndex));
+  ipcMain.handle("voice:status", () => voice.status());
+  ipcMain.handle("voice:prepare", () => voice.prepare((s) => broadcast("voice:status", s)));
+  ipcMain.handle("voice:speak", (_e, text: string, v: string, speed: number) => voice.speak(text, v, speed));
+  ipcMain.on("voice:cancel", () => voice.cancel());
   ipcMain.on("reader:activity", () => {
     lastScroll = Date.now();
   });
@@ -248,6 +253,7 @@ void app.whenReady().then(async () => {
     });
   }
   library = openLibrary();
+  voice.configure(path.join(dataDir(), "models"));
   registerIpc();
   buildMenu();
   createWindow();

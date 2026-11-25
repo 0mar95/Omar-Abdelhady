@@ -17,7 +17,17 @@ import type {
   ReadingOSApi,
   SearchHit,
   SearchParams,
+  VoiceStatus,
 } from "../../shared/ipc";
+
+/** The natural voices (desktop only). */
+export interface NaturalVoices {
+  status(): Promise<VoiceStatus>;
+  prepare(): Promise<VoiceStatus>;
+  speak(text: string, voice: string, speed: number): Promise<{ rate: number; pcm: Float32Array }>;
+  cancel(): void;
+  onStatus(cb: (s: VoiceStatus) => void): () => void;
+}
 
 declare global {
   interface Window {
@@ -46,6 +56,8 @@ export interface Platform {
   aiStatus(baseUrl: string): Promise<AiStatus>;
   chat(req: ChatRequest, onText: (t: string) => void): ChatHandle;
   onMenu(cb: (action: string) => void): () => void;
+  /** Neural voices for Listen; null in the browser build. */
+  voices: NaturalVoices | null;
   /** Whether search runs on the local index (desktop) or the simple in-page fallback (browser). */
   hasIndex: boolean;
   aiConfigure(cfg: AiConfig): Promise<void>;
@@ -101,6 +113,13 @@ function electronPlatform(api: ReadingOSApi): Platform {
       return { done, abort: () => void api.aiAbort(id) };
     },
     onMenu: (cb) => api.onMenu(cb),
+    voices: {
+      status: () => api.voiceStatus(),
+      prepare: () => api.voicePrepare(),
+      speak: (t, v, sp) => api.voiceSpeak(t, v, sp),
+      cancel: () => api.voiceCancel(),
+      onStatus: (cb) => api.onVoiceStatus(cb),
+    },
     hasIndex: true,
     aiConfigure: (cfg) => api.aiConfigure(cfg),
     indexBook: (id, title, blockIndex) => api.indexBook(id, title, blockIndex),
@@ -234,6 +253,7 @@ function webPlatform(): Platform {
       return { done, abort: () => ctrl.abort() };
     },
     onMenu: () => () => {},
+    voices: null,
     // The browser build has no local index: search falls back to scanning the
     // open book, and margin notes are a desktop feature.
     hasIndex: false,
