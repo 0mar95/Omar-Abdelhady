@@ -48,19 +48,3 @@ export function clauses(sentence: string, max = 220): string[] {
   if (best < 0) return [sentence];
   return [...clauses(sentence.slice(0, best).trim(), max), ...clauses(sentence.slice(best).trim(), max)];
 }
-
-/** Novelty and effect voices that no one should read a textbook with. */
-const NOVELTY =
-  /^(albert|bad news|bahh|bells|boing|bubbles|cellos|good news|jester|organ|superstar|trinoids|whisper|wobble|zarvox|junior|ralph|fred|kathy|grandma|grandpa|eddy|flo|reed|rocko|sandy|shelley|deranged|hysterical|pipe organ)\b/i;
-const GOOD = /\b(ava|zoe|evan|nathan|noelle|samantha|allison|susan|tom|serena|daniel|kate|oliver|jamie|karen|moira|tessa|fiona|aaron|nicky|joelle|google (us|uk) english)\b/i;
-
-/** How good a system voice is likely to sound; below zero means hide it. */
-export function voiceScore(v: { name: string; lang: string; localService?: boolean }): number {
-  if (NOVELTY.test(v.name)) return -1;
-  let s = 0;
-  if (/premium/i.test(v.name)) s += 6;
-  else if (/enhanced|neural|natural/i.test(v.name)) s += 4;
-  if (GOOD.test(v.name)) s += 2;
-  if (/^en[-_](US|GB)/i.test(v.lang)) s += 1;
-  return s;
-}

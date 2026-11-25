@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clauses, spoken, voiceScore } from "./speech";
+import { clauses, spoken } from "./speech";
 
 describe("spoken", () => {
   it("drops figure and table pointers", () => {
@@ -23,14 +23,5 @@ describe("clauses", () => {
     expect(parts.length).toBeGreaterThan(1);
     for (const p of parts) expect(s.includes(p)).toBe(true);
     expect(parts.join(" ")).toBe(s);
-  });
-});
-
-describe("voiceScore", () => {
-  it("hides novelty voices and prefers premium ones", () => {
-    expect(voiceScore({ name: "Zarvox", lang: "en-US" })).toBeLessThan(0);
-    expect(voiceScore({ name: "Bad News", lang: "en-US" })).toBeLessThan(0);
-    expect(voiceScore({ name: "Ava (Premium)", lang: "en-US" })).toBeGreaterThan(voiceScore({ name: "Samantha", lang: "en-US" }));
-    expect(voiceScore({ name: "Samantha", lang: "en-US" })).toBeGreaterThan(voiceScore({ name: "Rishi", lang: "en-IN" }));
   });
 });
