@@ -89,7 +89,8 @@ export function removeCover(id: string): void {
 }
 
 // Generated covers: a muted color chosen from the title, so a book always looks the same.
-const PALETTE = ["#2f4f4f", "#7a3b2e", "#34425c", "#4a5a3c", "#8a6a2f", "#5b3a55", "#3d5a6c", "#6b4f3a"];
+/** Bookcloth colors: deep, slightly dusty, all readable under light type. */
+const PALETTE = ["#5b2a22", "#2f4a6b", "#3d4f3a", "#6b5a3a", "#4a2f4f", "#2e4b4b", "#7a3b2e", "#3a3f5c"];
 
 export function coverColor(title: string): string {
   // FNV-1a with a final mix, so similar titles still land on different colors.

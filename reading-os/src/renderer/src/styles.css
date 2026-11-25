@@ -12,81 +12,93 @@
 @import "@fontsource/atkinson-hyperlegible/400.css";
 @import "@fontsource/atkinson-hyperlegible/700.css";
 @import "@fontsource/atkinson-hyperlegible/400-italic.css";
+@import "@fontsource-variable/inter-tight/index.css";
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *, [data-theme="black"], [data-theme="black"] *));
 
-/* ---------- Theme tokens ---------- */
+/* ---------- Theme tokens: Marginalia ----------
+   Warm paper, black ink, one oxblood accent, and a blue "pencil" for
+   everything the AI writes beside the text. */
 :root {
-  --ui-font: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --paper: #fbfaf7;
-  --paper-2: #f3f1ec;
-  --ink: #1f1d1a;
-  --ink-2: #4a463f;
-  --ink-3: #7b766c;
-  --rule: #e4e0d8;
-  --accent: #b4532a;
-  --accent-soft: #f6e5dc;
-  --hl: rgb(250 204 90 / 0.42);
-  --hl-mark: #e0a93a;
-  --link: #2f5d8a;
-  --card: #ffffff;
-  --card-ink: #2a2723;
-  --shadow: 0 1px 2px rgb(0 0 0 / 0.06), 0 8px 24px rgb(0 0 0 / 0.08);
-  --highlight: rgb(255 214 102 / 0.55);
+  --ui-font: "Inter Tight Variable", "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --title-font: "Newsreader Variable", Georgia, serif;
+  --paper: #fbf8f2;
+  --paper-2: #f1ece2;
+  --ink: #1f1c18;
+  --ink-2: #4f483f;
+  --ink-3: #8a7f6e;
+  --rule: #e3dacb;
+  --accent: #7a2a1f;
+  --accent-soft: #f1e2dc;
+  --pencil: #2f4a6b;
+  --pencil-soft: #e4e9ef;
+  --hl: rgb(233 205 120 / 0.5);
+  --hl-mark: #d9b84f;
+  --link: #2f4a6b;
+  --card: #fffdf9;
+  --card-ink: #2a2620;
+  --shadow: 0 1px 2px rgb(60 40 20 / 0.06), 0 14px 32px rgb(60 40 20 / 0.12);
+  --highlight: rgb(236 219 161 / 0.85);
   --figure-bg: #ffffff;
   color-scheme: light;
 }
 [data-theme="sepia"] {
-  --paper: #f6efe2;
-  --paper-2: #ede4d3;
-  --ink: #3a2f23;
-  --ink-2: #5c4c3b;
-  --ink-3: #8a7863;
-  --rule: #e0d4bf;
-  --accent: #a3512b;
-  --accent-soft: #efdcc8;
-  --link: #6b4a2b;
+  --paper: #f2ebdf;
+  --paper-2: #e9dfcd;
+  --ink: #1f1c18;
+  --ink-2: #4f483f;
+  --ink-3: #8a7f6e;
+  --rule: #d9ccb5;
+  --accent: #7a2a1f;
+  --accent-soft: #ead8cc;
+  --pencil: #2f4a6b;
+  --pencil-soft: #dfe2e2;
+  --link: #2f4a6b;
   --card: #fbf6ec;
-  --card-ink: #3a2f23;
-  --highlight: rgb(240 190 90 / 0.5);
-  --figure-bg: #fffdf8;
+  --card-ink: #1f1c18;
+  --highlight: rgb(236 219 161 / 0.9);
+  --figure-bg: #fbf6ec;
 }
 [data-theme="dark"] {
-  --paper: #1c1b19;
-  --paper-2: #252421;
-  --ink: #e6e1d8;
-  --ink-2: #bdb6aa;
-  --ink-3: #8a8479;
-  --rule: #34322e;
-  --accent: #e08a5f;
-  --accent-soft: #3b2a21;
-  --hl: rgb(240 190 70 / 0.26);
-  --hl-mark: #c9952f;
-  --link: #9cc0e6;
-  --card: #262522;
-  --card-ink: #e6e1d8;
-  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 10px 28px rgb(0 0 0 / 0.45);
-  --highlight: rgb(212 160 60 / 0.4);
-  --figure-bg: #f4f1ea;
+  --paper: #1b1916;
+  --paper-2: #24211d;
+  --ink: #ece4d6;
+  --ink-2: #bdb3a2;
+  --ink-3: #8a8070;
+  --rule: #3a352e;
+  --accent: #d9826b;
+  --accent-soft: #3a2620;
+  --pencil: #9db6d3;
+  --pencil-soft: #222a33;
+  --hl: rgb(233 190 90 / 0.24);
+  --hl-mark: #c9a245;
+  --link: #9db6d3;
+  --card: #24211d;
+  --card-ink: #ece4d6;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 14px 32px rgb(0 0 0 / 0.45);
+  --highlight: rgb(212 168 70 / 0.38);
+  --figure-bg: #f2ebdf;
   color-scheme: dark;
 }
 [data-theme="black"] {
   --paper: #000000;
-  --paper-2: #121212;
-  --ink: #d9d6d0;
-  --ink-2: #a9a59e;
-  --ink-3: #77736d;
-  --rule: #262626;
-  --accent: #e08a5f;
-  --accent-soft: #2a1d16;
-  --hl: rgb(240 190 70 / 0.24);
-  --hl-mark: #c9952f;
-  --link: #9cc0e6;
-  --card: #141414;
-  --card-ink: #d9d6d0;
-  --shadow: 0 1px 2px rgb(0 0 0 / 0.6), 0 10px 28px rgb(0 0 0 / 0.6);
-  --highlight: rgb(212 160 60 / 0.35);
-  --figure-bg: #ebe8e2;
+  --paper-2: #121110;
+  --ink: #ddd6ca;
+  --ink-2: #aaa294;
+  --ink-3: #777064;
+  --rule: #2a2723;
+  --accent: #d9826b;
+  --accent-soft: #2a1b16;
+  --pencil: #9db6d3;
+  --pencil-soft: #161c22;
+  --hl: rgb(233 190 90 / 0.22);
+  --hl-mark: #c9a245;
+  --link: #9db6d3;
+  --card: #141312;
+  --card-ink: #ddd6ca;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.6), 0 14px 32px rgb(0 0 0 / 0.6);
+  --highlight: rgb(212 168 70 / 0.33);
+  --figure-bg: #ebe4d8;
   color-scheme: dark;
 }
 
@@ -101,7 +113,10 @@
   --color-accent-soft: var(--accent-soft);
   --color-card: var(--card);
   --color-link: var(--link);
+  --color-pencil: var(--pencil);
+  --color-pencil-soft: var(--pencil-soft);
   --font-ui: var(--ui-font);
+  --font-title: var(--title-font);
 }
 
 html,
@@ -137,9 +152,9 @@ button {
 
 /* ---------- Reading surface ---------- */
 .reader {
-  --reader-font: "Literata Variable", Georgia, serif;
-  --reader-size: 19px;
-  --reader-leading: 1.65;
+  --reader-font: "Newsreader Variable", Georgia, serif;
+  --reader-size: 20px;
+  --reader-leading: 1.68;
   --reader-measure: 66ch;
   --reader-align: left;
   --reader-para-gap: 0.85em;
@@ -186,28 +201,29 @@ button {
 .book h2,
 .book h3,
 .book h4 {
-  font-family: var(--ui-font);
+  font-family: var(--title-font);
   color: var(--ink);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.005em;
   text-wrap: balance;
   scroll-margin-top: 72px;
 }
 .book h2 {
-  font-size: 1.32em;
-  line-height: 1.25;
-  font-weight: 650;
+  font-size: 1.36em;
+  line-height: 1.22;
+  font-weight: 600;
   margin: 2.2em 0 0.7em;
 }
 .book h3 {
-  font-size: 1.08em;
+  font-size: 1.12em;
   line-height: 1.3;
-  font-weight: 650;
+  font-weight: 600;
   margin: 1.8em 0 0.5em;
 }
 .book h4 {
-  font-size: 0.95em;
+  font-size: 0.98em;
   line-height: 1.35;
-  font-weight: 650;
+  font-weight: 500;
+  font-style: italic;
   margin: 1.5em 0 0.35em;
   color: var(--ink-2);
 }
@@ -250,8 +266,9 @@ button {
   /* Level with the heading: its top margin, in reading-size units. */
   top: calc(var(--reader-size) * 2.95);
   width: 15.5rem;
-  padding-left: 0.85rem;
-  border-left: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--pencil);
+  color: var(--pencil);
   font-size: 13px;
   animation: note-in 0.5s ease-out;
 }
@@ -367,8 +384,8 @@ button {
 .table-box {
   overflow: auto;
   max-height: min(72vh, 900px);
-  border-radius: 8px;
-  box-shadow: 0 0 0 1px var(--rule);
+  border-top: 1px solid var(--ink);
+  border-bottom: 1px solid var(--ink);
   background: var(--paper);
 }
 .table-box.full {
@@ -398,11 +415,15 @@ button {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: var(--paper-2);
+  background: var(--paper);
   color: var(--ink);
+  font-family: var(--ui-font);
+  font-size: 0.82em;
   font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   vertical-align: bottom;
-  border-bottom: 1px solid var(--rule);
+  border-bottom: 1px solid var(--ink);
 }
 .table-box td {
   color: var(--ink-2);
@@ -412,7 +433,7 @@ button {
   font-weight: 500;
 }
 .table-box tbody tr:nth-child(even) td {
-  background: color-mix(in srgb, var(--paper-2) 40%, var(--paper));
+  background: var(--paper);
 }
 .table-box tbody tr:nth-child(odd) td {
   background: var(--paper);
@@ -470,7 +491,10 @@ button {
 }
 .book .book-contents > ol > li {
   border-top: 1px solid var(--rule);
-  padding: 0.55em 0;
+  padding: 0.6em 0;
+}
+.book .book-contents > ol > li:first-child {
+  border-top-color: var(--ink);
 }
 .book .book-contents .chapter-row {
   display: flex;
@@ -481,12 +505,15 @@ button {
   font-size: 0.95em;
 }
 .book .book-contents .chapter-row .num {
-  min-width: 1.6em;
+  min-width: 1.4em;
+  font-family: var(--title-font);
+  font-size: 1.25em;
   color: var(--accent);
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: lining-nums tabular-nums;
 }
 .book .book-contents .chapter-row .title {
   flex: 1;
+  font-family: var(--title-font);
   font-weight: 600;
   color: var(--ink);
 }
@@ -494,7 +521,8 @@ button {
   color: var(--accent);
 }
 .book .book-contents .chapter-row .time {
-  font-size: 0.8em;
+  font-family: var(--ui-font);
+  font-size: 0.66em;
   color: var(--ink-3);
   white-space: nowrap;
 }
@@ -506,6 +534,7 @@ button {
   font-size: 0.8em;
 }
 .book .book-contents .sections button {
+  font-style: italic;
   color: var(--ink-2);
   text-align: left;
 }
@@ -528,9 +557,9 @@ button {
   gap: 0.3rem;
   padding: 0.35rem 0.5rem;
   border-radius: 999px;
-  background: #211f1c;
-  color: #f1ece3;
-  box-shadow: 0 10px 30px rgb(0 0 0 / 0.28);
+  background: #1f1c18;
+  color: #f2ebdf;
+  box-shadow: 0 14px 30px rgb(40 28 14 / 0.3);
   font-size: 12.5px;
 }
 .listen-bar button {
@@ -546,7 +575,7 @@ button {
 .listen-bar button.play {
   width: 38px;
   height: 38px;
-  background: var(--accent);
+  background: #7a2a1f;
   color: #fff;
 }
 .listen-bar .where {
@@ -576,44 +605,47 @@ button {
   flex: none;
   align-items: center;
   gap: 0.35em;
-  padding: 0.2em 0.65em;
-  border-radius: 999px;
-  border: 1px solid var(--rule);
-  color: var(--ink-3);
-  font-size: 0.95em;
+  padding: 0.25em 0.2em;
+  font-family: var(--ui-font);
+  font-size: 0.78em;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pencil);
 }
 .explain-figure:hover {
   color: var(--accent);
-  border-color: var(--accent);
 }
 
 /* Study mode: "Check yourself" at the end of a section, and the review sheet. */
 .study-invite {
-  margin: 1.6em 0 2.4em;
+  margin: 1.8em 0 2.6em;
+  padding-top: 1em;
+  border-top: 1px dashed color-mix(in srgb, var(--ink-3) 55%, transparent);
 }
 .study-invite button {
   display: inline-flex;
   align-items: center;
   gap: 0.5em;
   font-size: 0.78em;
-  color: var(--ink-3);
-  padding: 0.45em 0.9em;
+  font-family: var(--ui-font);
+  color: var(--ink);
+  padding: 0.5em 1em;
   border-radius: 999px;
-  border: 1px dashed var(--rule);
+  border: 1px solid var(--ink);
 }
 .study-invite button:hover:not(:disabled) {
-  color: var(--accent);
-  border-color: var(--accent);
-  border-style: solid;
+  color: var(--paper);
+  background: var(--ink);
 }
 .study-card {
   margin: 1.8em 0 2.6em;
-  padding: 1em 1.2em 1.1em;
-  border-radius: 12px;
+  padding: 1.1em 1.3em 1.2em;
+  border-radius: 6px;
   background: var(--card);
   color: var(--card-ink, var(--ink));
   border: 1px solid var(--rule);
-  box-shadow: var(--shadow);
+  border-top: 2px solid var(--accent);
   font-size: 0.86em;
 }
 .study-card.review {
@@ -656,6 +688,8 @@ button {
 }
 .study-card .q {
   margin: 0 0 0.6em;
+  font-family: var(--title-font);
+  font-size: 1.12em;
   font-weight: 500;
   line-height: 1.45;
   text-align: left !important;
@@ -677,8 +711,10 @@ button {
   align-items: baseline;
   text-align: left;
   padding: 0.5em 0.7em;
-  border-radius: 8px;
+  border-radius: 4px;
   border: 1px solid var(--rule);
+  font-family: var(--ui-font);
+  font-size: 0.92em;
   line-height: 1.4;
 }
 .study-card .option:hover:not(:disabled) {
@@ -739,31 +775,32 @@ button {
   text-indent: 0 !important;
 }
 .study-card .why {
-  color: var(--ink-3);
-  font-size: 0.92em;
+  color: var(--pencil);
+  font-style: italic;
+  font-size: 0.95em;
 }
 
 /* Chapter openers: number, title, reading time, key points, sections. */
 .book .chapter-opener {
-  margin: 5em 0 2.8em;
+  margin: 5.5em 0 2.8em;
   font-family: var(--ui-font);
 }
 .book .chapter-opener:first-child {
   margin-top: 1em;
 }
 .chapter-opener .num {
-  font-size: 3.2em;
-  font-weight: 300;
-  line-height: 1;
-  letter-spacing: -0.02em;
+  font-family: var(--title-font);
+  font-size: 4.2em;
+  font-weight: 400;
+  line-height: 0.85;
   color: var(--accent);
 }
 .book .chapter-opener h1 {
-  margin: 0.25em 0 0;
-  font-family: var(--ui-font);
-  font-size: 2em;
+  margin: 0.3em 0 0;
+  font-family: var(--title-font);
+  font-size: 2.1em;
   font-weight: 600;
-  line-height: 1.15;
+  line-height: 1.08;
   letter-spacing: -0.015em;
 }
 .chapter-opener .authors {
@@ -776,9 +813,10 @@ button {
   text-indent: 0 !important;
 }
 .chapter-opener .meta {
-  margin: 0.7em 0 0;
-  font-size: 0.74em;
-  letter-spacing: 0.02em;
+  margin: 0.8em 0 0;
+  font-size: 0.6em;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
   color: var(--ink-3);
   text-align: left !important;
   text-indent: 0 !important;
@@ -787,35 +825,32 @@ button {
   display: flex;
   align-items: center;
   gap: 0.45em;
-  font-size: 0.68em;
+  font-size: 0.56em;
   font-weight: 600;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--accent);
   margin-bottom: 0.6em;
 }
 .chapter-opener .key-points {
   margin-top: 1.8em;
-  padding: 1.1em 1.3em;
-  border-radius: 12px;
-  background: var(--card, var(--paper-2));
-  border: 1px solid var(--rule);
-  box-shadow: var(--shadow);
+  padding: 0.9em 0 1em;
+  border-top: 1px solid var(--ink);
+  border-bottom: 1px solid var(--rule);
 }
 .chapter-opener .key-points ul {
   margin: 0 !important;
   padding-left: 1.2em !important;
-  font-size: 0.86em;
-  line-height: 1.5;
+  font-family: var(--reader-font);
+  font-size: 0.9em;
+  line-height: 1.55;
   color: var(--ink-2);
 }
 .chapter-opener .key-points li + li {
   margin-top: 0.35em;
 }
 .chapter-opener .in-chapter {
-  margin-top: 1.6em;
-  padding-top: 1.2em;
-  border-top: 1px solid var(--rule);
+  margin-top: 1.4em;
 }
 .chapter-opener .in-chapter .label {
   color: var(--ink-3);
@@ -826,7 +861,8 @@ button {
   padding: 0 !important;
   columns: 2;
   column-gap: 1.6em;
-  font-size: 0.82em;
+  font-family: var(--reader-font);
+  font-size: 0.86em;
 }
 .chapter-opener .in-chapter li {
   break-inside: avoid;
@@ -885,14 +921,15 @@ button {
 }
 .title-page .rule {
   display: block;
-  width: 2.2em;
-  height: 2px;
+  width: 1.8em;
+  height: 1px;
   background: var(--accent);
   margin: 1.6em 0 1.4em;
 }
 .title-page .byline {
-  font-size: 0.95em;
-  font-weight: 600;
+  font-family: var(--reader-font);
+  font-size: 1.05em;
+  font-weight: 400;
   color: var(--ink);
   margin: 0;
   text-align: center !important;
@@ -1063,7 +1100,6 @@ button {
   width: 100%;
   border-radius: 2px;
   background: var(--accent);
-  opacity: 0.7;
   transition: height 0.3s ease;
 }
 .chapter-rail:hover {

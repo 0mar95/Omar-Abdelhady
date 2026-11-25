@@ -170,7 +170,7 @@ function TextTab() {
             aria-label={t.label}
             title={t.label}
             onClick={() => s.set({ theme: t.id })}
-            className={`h-10 rounded-[10px] text-[14px] [font-family:'Literata_Variable',Georgia,serif] ${s.theme === t.id ? "outline-2 outline-offset-2 outline-[var(--accent)]" : "outline-none"}`}
+            className={`h-10 rounded-[10px] text-[14px] font-title ${s.theme === t.id ? "outline-2 outline-offset-2 outline-[var(--accent)]" : "outline-none"}`}
             style={{ background: t.bg, color: t.fg, boxShadow: "inset 0 0 0 1px rgb(0 0 0 / 0.1)" }}
           >
             Aa
@@ -201,7 +201,7 @@ function TextTab() {
             aria-label="Smaller text"
             disabled={s.size <= 14}
             onClick={() => s.set({ size: Math.max(14, s.size - 1) })}
-            className="h-[30px] w-9 rounded-lg bg-card text-[12px] text-ink shadow-sm disabled:opacity-40 [font-family:'Literata_Variable',Georgia,serif]"
+            className="h-[30px] w-9 rounded-lg bg-card text-[12px] text-ink shadow-sm disabled:opacity-40 font-title"
           >
             A
           </button>
@@ -211,7 +211,7 @@ function TextTab() {
             aria-label="Larger text"
             disabled={s.size >= 28}
             onClick={() => s.set({ size: Math.min(28, s.size + 1) })}
-            className="h-[30px] w-9 rounded-lg bg-card text-[17px] text-ink shadow-sm disabled:opacity-40 [font-family:'Literata_Variable',Georgia,serif]"
+            className="h-[30px] w-9 rounded-lg bg-card text-[17px] text-ink shadow-sm disabled:opacity-40 font-title"
           >
             A
           </button>

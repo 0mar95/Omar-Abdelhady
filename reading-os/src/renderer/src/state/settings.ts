@@ -7,7 +7,7 @@ export type FontChoice = "literata" | "source-serif" | "newsreader" | "inter" | 
 export const FONTS: Record<FontChoice, { label: string; css: string; note: string }> = {
   literata: { label: "Literata", css: '"Literata Variable", Georgia, serif', note: "Designed for long reading" },
   "source-serif": { label: "Source Serif", css: '"Source Serif 4 Variable", Georgia, serif', note: "Crisp, textbook feel" },
-  newsreader: { label: "Newsreader", css: '"Newsreader Variable", Georgia, serif', note: "Elegant, compact" },
+  newsreader: { label: "Newsreader", css: '"Newsreader Variable", Georgia, serif', note: "Kenning's own: calm, bookish" },
   inter: { label: "Inter", css: '"Inter Variable", system-ui, sans-serif', note: "Clean sans-serif" },
   atkinson: { label: "Atkinson", css: '"Atkinson Hyperlegible", system-ui, sans-serif', note: "Maximum legibility" },
 };
@@ -37,9 +37,9 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   theme: "sepia",
-  font: "literata",
-  size: 19,
-  leading: 1.65,
+  font: "newsreader",
+  size: 20,
+  leading: 1.68,
   measure: 66,
   justify: false,
   indent: false,

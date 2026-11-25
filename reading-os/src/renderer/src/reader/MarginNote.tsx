@@ -19,7 +19,7 @@ function Concepts({ note }: { note: Note }) {
           type="button"
           onClick={() => searchFor(c)}
           title={`Search the book for “${c}”`}
-          className="rounded-full bg-paper-2 px-2 py-0.5 text-[11px] leading-tight text-ink-2 ring-1 ring-rule/70 hover:bg-accent-soft hover:text-ink"
+          className="rounded-full px-2 py-0.5 font-ui text-[11px] not-italic leading-tight text-pencil ring-1 ring-pencil/35 hover:bg-pencil-soft"
         >
           {c}
         </button>
@@ -36,15 +36,13 @@ export function GutterNote({ note, working, level }: { note?: Note; working: boo
       <aside aria-label="Margin note" className={`margin-note lvl-${level} font-ui`} data-note={note?.blockId}>
         {note ? (
           <>
-            <div className="flex gap-1.5 text-[12.5px] leading-snug text-ink-2">
-              <IconSparkle size={12} className="mt-[3px] shrink-0 text-accent opacity-80" />
-              <span>{note.summary}</span>
-            </div>
+            <div className="mb-1 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-pencil">In short</div>
+            <p className="m-0 font-title text-[14.5px] italic leading-[1.45] text-pencil">{note.summary}</p>
             <Concepts note={note} />
           </>
         ) : (
           <div className="flex items-center gap-1.5 text-[12px] text-ink-3">
-            <IconSparkle size={12} className="animate-pulse text-accent" /> Summarizing this section…
+            <IconSparkle size={12} className="animate-pulse text-pencil" /> Reading this section…
           </div>
         )}
       </aside>
@@ -57,10 +55,7 @@ export function InlineNote({ note }: { note?: Note }) {
   if (!note) return null;
   return (
     <div className="blk blk-note -mt-1 mb-4 font-ui" data-note={note.blockId}>
-      <div className="flex gap-1.5 text-[13px] leading-snug text-ink-3">
-        <IconSparkle size={12} className="mt-[3px] shrink-0 text-accent opacity-80" />
-        <span>{note.summary}</span>
-      </div>
+      <p className="m-0 border-l-2 border-pencil pl-3 font-title text-[15px] italic leading-snug text-pencil">{note.summary}</p>
       <Concepts note={note} />
     </div>
   );

@@ -103,7 +103,7 @@ export function SelectionMenu({ scrollRoot }: { scrollRoot: React.RefObject<HTML
       aria-label="Selection actions"
       onMouseDown={(e) => e.preventDefault() /* keep the selection */}
       style={{ left, top, width: asking ? width : undefined }}
-      className="fixed z-40 flex items-center gap-0.5 rounded-xl bg-[#211f1c] p-1 font-ui text-[13px] text-[#f1ece3] shadow-[0_8px_30px_rgb(0_0_0/0.28)] ring-1 ring-black/20 dark:bg-[#34312c]"
+      className="fixed z-40 flex items-center gap-0.5 rounded-[10px] bg-[#1f1c18] p-1 font-ui text-[13px] text-[#f2ebdf] shadow-[0_12px_30px_rgb(40_28_14/0.3)] ring-1 ring-black/20 dark:bg-[#34302a]"
     >
       {asking ? (
         <form
@@ -122,7 +122,7 @@ export function SelectionMenu({ scrollRoot }: { scrollRoot: React.RefObject<HTML
             placeholder="Ask about this passage…"
             className="min-w-0 flex-1 bg-transparent px-2 py-1.5 text-[13px] outline-none placeholder:text-white/40"
           />
-          <button type="submit" className="rounded-lg bg-[var(--accent)] px-3 py-1.5 font-medium text-white">
+          <button type="submit" className="rounded-lg bg-[#7a2a1f] px-3 py-1.5 font-medium text-white">
             Ask
           </button>
         </form>
@@ -137,7 +137,7 @@ export function SelectionMenu({ scrollRoot }: { scrollRoot: React.RefObject<HTML
             }}
             className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 hover:bg-white/10"
           >
-            <span className="text-[#f2c66d]">
+            <span className="text-[#e9d9a6]">
               <IconMarker size={15} />
             </span>
             Highlight

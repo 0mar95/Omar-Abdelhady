@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ACTIONS, useCards, type Card } from "../ai";
 import { useSettings } from "../state/settings";
 import { Markdown } from "../ui/markdown";
-import { IconChevron, IconCopy, IconRefresh, IconSparkle, IconStop, IconX } from "../ui/icons";
+import { IconChevron, IconCopy, IconRefresh, IconStop, IconX } from "../ui/icons";
 
 function helpFor(error: string, model: string): string {
   if (/failed to fetch|ECONNREFUSED|fetch failed|NetworkError|Load failed/i.test(error))
@@ -19,8 +19,8 @@ export function InlineCard({ card, onRegenerate }: { card: Card; onRegenerate(ca
   const label = card.kind === "ask" ? card.question ?? "Answer" : ACTIONS[card.kind].short;
   return (
     <div className="blk blk-card my-5 font-ui" data-card={card.id}>
-      <div className="overflow-hidden rounded-xl bg-card text-[15px] text-[var(--card-ink)] shadow-[var(--shadow)] ring-1 ring-rule">
-        <div className="flex items-center gap-2 border-b border-rule/70 px-3.5 py-2">
+      <div className="border-l-2 border-pencil pl-1 text-[15px] text-ink">
+        <div className="flex items-center gap-2 px-3 py-1">
           <button
             type="button"
             onClick={() => toggle(card.id)}
@@ -28,9 +28,8 @@ export function InlineCard({ card, onRegenerate }: { card: Card; onRegenerate(ca
             aria-expanded={!card.collapsed}
           >
             <IconChevron size={14} className={`shrink-0 text-ink-3 transition-transform ${card.collapsed ? "" : "rotate-90"}`} />
-            <IconSparkle size={15} className="shrink-0 text-accent" />
-            <span className="shrink-0 text-[12.5px] font-semibold text-ink">{label}</span>
-            <span className="truncate text-[12.5px] italic text-ink-3">“{card.quote.slice(0, 140)}”</span>
+            <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.14em] text-pencil">{label}</span>
+            <span className="truncate font-title text-[13.5px] italic text-ink-3">“{card.quote.slice(0, 140)}”</span>
           </button>
           <div className="flex shrink-0 items-center gap-0.5 text-ink-3">
             {streaming ? (
@@ -58,7 +57,7 @@ export function InlineCard({ card, onRegenerate }: { card: Card; onRegenerate(ca
           </div>
         </div>
         {!card.collapsed && (
-          <div className="px-4 py-3 leading-relaxed">
+          <div className="px-3 pt-1 pb-2 font-title text-[17px] leading-[1.6] text-ink-2">
             {card.status === "error" ? (
               <p className="m-0 text-[14px] text-accent">{helpFor(card.error ?? "Something went wrong.", model)}</p>
             ) : card.text ? (

@@ -189,15 +189,15 @@ function Figure({ b }: { b: FigureBlock }) {
     <figure className="my-8 flex flex-col items-center" data-key={b.key}>
       <button
         type="button"
-        className="w-full cursor-zoom-in rounded-md bg-[var(--figure-bg)] p-2 shadow-[0_0_0_1px_var(--rule)]"
+        className="w-full cursor-zoom-in bg-[var(--figure-bg)] p-3 shadow-[0_0_0_1px_var(--rule)]"
         onClick={() => setZoom({ page: b.page, rect: b.rect, title: b.key ?? "Figure", image: b.image, caption: stripKey(b.caption, b.key), chapter: b.chapter, blockId: b.id })}
         aria-label={`Enlarge ${b.key ?? "figure"}`}
       >
         <FigureImage b={b} />
       </button>
-      <figcaption className="mt-3 flex w-full items-start gap-3 font-ui text-[0.8em] leading-snug text-ink-2">
+      <figcaption className="mt-3 flex w-full items-baseline gap-3 text-[0.78em] leading-snug text-ink-2">
         <span className="min-w-0 flex-1">
-          {b.key && <span className="mr-1.5 font-semibold text-accent">{b.key}</span>}
+          {b.key && <span className="mr-1.5 font-semibold tracking-[0.05em] text-accent [font-variant:small-caps]">{b.key.toLowerCase()}</span>}
           <Spans spans={stripKey(b.caption, b.key)} chapter={b.chapter} />
         </span>
         <ExplainFigureButton id={b.id} />

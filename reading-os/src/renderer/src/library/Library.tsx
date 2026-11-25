@@ -76,17 +76,17 @@ export function Library({ onOpenFile }: { onOpenFile(): void }) {
                   <ContinueCard e={current} onOpen={() => void openEntry(current)} />
                   {also.length > 0 && (
                     <div className="flex w-full flex-col gap-2.5 lg:w-[300px]">
-                      <div className="px-1 pt-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-3">Also in progress</div>
+                      <div className="px-1 pt-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-3">Also in progress</div>
                       {also.map((e) => (
                         <button
                           key={e.id}
                           type="button"
                           onClick={() => void openEntry(e)}
-                          className="flex items-center gap-3.5 rounded-2xl bg-card p-3 text-left ring-1 ring-rule/60 hover:ring-rule"
+                          className="flex items-center gap-3.5 border-t border-rule py-3 text-left hover:text-[var(--accent)]"
                         >
                           <Cover e={e} className="h-14 w-10 shrink-0" mini />
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[14.5px] font-semibold text-ink [font-family:'Literata_Variable',Georgia,serif]">
+                            <span className="block truncate text-[14.5px] font-semibold text-ink font-title">
                               {e.title}
                             </span>
                             <span className="mt-0.5 block truncate text-[12px] text-ink-3">
@@ -102,8 +102,8 @@ export function Library({ onOpenFile }: { onOpenFile(): void }) {
               )}
 
               <section aria-label="Your library">
-                <div className="mb-5 flex flex-wrap items-center gap-2">
-                  <h2 className="m-0 mr-3 text-[22px] font-semibold text-ink [font-family:'Literata_Variable',Georgia,serif]">Your library</h2>
+                <div className="mb-6 flex flex-wrap items-center gap-2 border-b border-rule pb-3">
+                  <h2 className="m-0 mr-3 text-[24px] font-semibold text-ink font-title">On the shelf</h2>
                   {(["all", "pdf", "epub", "docs"] as Filter[])
                     .filter((f) => f === "all" || counts[f] > 0)
                     .map((f) => (
@@ -154,13 +154,14 @@ function TopBar({ onOpenFile }: { onOpenFile(): void }) {
     >
       <div className="flex shrink-0 items-center gap-2.5">
         <img src="icon.png" alt="" className="size-7" draggable={false} />
-        <span className="text-[19px] font-semibold tracking-tight text-ink [font-family:'Literata_Variable',Georgia,serif]">Kenning</span>
+        <span className="text-[24px] font-semibold tracking-[-0.02em] text-ink font-title">kenning</span>
+        <span className="hidden text-[10.5px] uppercase tracking-[0.16em] text-ink-3 lg:inline">your library</span>
       </div>
       <div className="flex min-w-0 flex-1 justify-center">
         <button
           type="button"
           onClick={() => useReader.getState().setOverlay("palette")}
-          className="flex h-[38px] w-full max-w-[520px] items-center gap-2.5 rounded-[10px] bg-paper-2 px-3 text-left text-[13.5px] text-ink-3 hover:text-ink-2 [-webkit-app-region:no-drag]"
+          className="flex h-[38px] w-full max-w-[520px] items-center gap-2.5 rounded-full bg-paper-2/70 px-4 text-left text-[13.5px] text-ink-3 ring-1 ring-rule hover:text-ink-2 [-webkit-app-region:no-drag]"
         >
           <IconSearch size={16} />
           <span className="min-w-0 flex-1 truncate">Search all your books, or ask a question</span>
@@ -171,7 +172,7 @@ function TopBar({ onOpenFile }: { onOpenFile(): void }) {
       <button
         type="button"
         onClick={onOpenFile}
-        className="flex h-[38px] shrink-0 items-center gap-2 rounded-[10px] bg-[var(--accent)] px-4 text-[13.5px] font-semibold text-paper hover:brightness-110 [-webkit-app-region:no-drag]"
+        className="flex h-[38px] shrink-0 items-center gap-2 rounded-full bg-ink px-4 text-[13.5px] font-medium text-paper hover:brightness-125 [-webkit-app-region:no-drag]"
       >
         <svg aria-hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
           <path d="M12 5v14M5 12h14" />
@@ -242,17 +243,17 @@ function AiPill() {
 function ContinueCard({ e, onOpen }: { e: LibraryEntry; onOpen(): void }) {
   const chapter = e.chapterTitle ? `${e.chapterNumber ? `Chapter ${e.chapterNumber} · ` : ""}${e.chapterTitle}` : null;
   return (
-    <div className="flex min-w-[320px] flex-1 gap-7 rounded-[18px] bg-card p-6 shadow-[var(--shadow)]">
+    <div className="flex min-w-[320px] flex-1 items-end gap-8 py-2">
       <button type="button" onClick={onOpen} aria-label={`Open ${e.title}`} className="hidden shrink-0 sm:block">
-        <Cover e={e} className="h-[212px] w-[148px]" />
+        <Cover e={e} className="h-[214px] w-[150px] shadow-[inset_5px_0_0_rgb(0_0_0/0.22),0_18px_30px_rgb(60_40_20/0.25)]" />
       </button>
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--accent)]">Continue reading</div>
-        <h2 className="m-0 mt-1.5 text-[28px] font-semibold leading-tight tracking-tight text-ink [font-family:'Literata_Variable',Georgia,serif]">{e.title}</h2>
-        {chapter && <div className="mt-1 truncate text-[13.5px] text-ink-3">{chapter}</div>}
+        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--accent)]">Continue reading</div>
+        <h2 className="m-0 mt-2 text-[36px] font-semibold leading-[1.08] tracking-[-0.015em] text-ink font-title">{e.title}</h2>
+        {chapter && <div className="mt-2 truncate font-title text-[18px] italic text-ink-2">{chapter}</div>}
         {!chapter && e.author && <div className="mt-1 truncate text-[13.5px] text-ink-3">{e.author}</div>}
         <div className="mt-auto flex flex-wrap items-center gap-x-5 gap-y-3 pt-6">
-          <button type="button" onClick={onOpen} className="h-[42px] rounded-[10px] bg-[var(--accent)] px-5 text-[14px] font-semibold text-paper hover:brightness-110">
+          <button type="button" onClick={onOpen} className="h-[42px] rounded-full bg-[var(--accent)] px-6 text-[14px] font-medium text-paper hover:brightness-110">
             Resume{e.pageLabel && fmt(e) === "pdf" ? ` · page ${e.pageLabel}` : ""}
           </button>
           <div className="min-w-[200px] max-w-[300px] flex-1">
@@ -288,7 +289,7 @@ function ShelfBook({ e, onOpen }: { e: LibraryEntry; onOpen(): void }) {
         </button>
         {/* Status badges make way for the actions on hover. */}
         <span className="pointer-events-none absolute right-2 top-2 transition group-focus-within:opacity-0 group-hover:opacity-0">
-          {fresh && <span className="rounded-full bg-[#e08a5f] px-2 py-0.5 text-[10px] font-semibold text-[#2a1d16]">New</span>}
+          {fresh && <span className="rounded-full bg-[#f2ebdf] px-2 py-0.5 text-[10px] font-semibold text-[#7a2a1f]">New</span>}
           {finished && (
             <span className="grid size-[22px] place-items-center rounded-full bg-paper text-[var(--accent)]" title="Finished">
               <svg aria-hidden width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
@@ -373,9 +374,9 @@ function Cover({ e, className, mini }: { e: LibraryEntry; className: string; min
       {!mini && (
         <>
           <span className="absolute left-3 top-2.5 rounded bg-white/15 px-1.5 py-0.5 text-[9.5px] font-semibold tracking-[0.1em]">{BADGE[fmt(e)]}</span>
-          <span className="line-clamp-4 text-[16px] font-semibold leading-[1.15] [font-family:'Literata_Variable',Georgia,serif]">{e.title}</span>
+          <span className="line-clamp-4 text-[16px] font-semibold leading-[1.15] font-title">{e.title}</span>
           {e.author && <span className="truncate text-[10px] opacity-75">{e.author}</span>}
-          <span className="h-0.5 w-7 bg-[#e08a5f]" />
+          <span className="h-px w-7 bg-[#f2ebdf]/70" />
         </>
       )}
     </div>
@@ -384,8 +385,8 @@ function Cover({ e, className, mini }: { e: LibraryEntry; className: string; min
 
 function Progress({ value, className = "" }: { value: number; className?: string }) {
   return (
-    <div className={`h-[3px] overflow-hidden rounded-full bg-rule ${className}`}>
-      <div className="h-full rounded-full bg-[var(--accent)]" style={{ width: `${Math.round(value * 100)}%` }} />
+    <div className={`h-[2px] overflow-hidden bg-rule ${className}`}>
+      <div className="h-full bg-[var(--accent)]" style={{ width: `${Math.round(value * 100)}%` }} />
     </div>
   );
 }
@@ -393,7 +394,7 @@ function Progress({ value, className = "" }: { value: number; className?: string
 function EmptyShelf({ onOpenFile }: { onOpenFile(): void }) {
   return (
     <div className="pt-10">
-      <h1 className="m-0 max-w-[620px] text-[36px] font-semibold leading-tight tracking-tight text-ink [font-family:'Literata_Variable',Georgia,serif]">
+      <h1 className="m-0 max-w-[620px] text-[36px] font-semibold leading-tight tracking-tight text-ink font-title">
         Hard-to-read PDFs, turned into books you enjoy reading.
       </h1>
       <p className="mb-0 mt-3 max-w-[560px] text-[15px] leading-relaxed text-ink-2">
@@ -402,7 +403,7 @@ function EmptyShelf({ onOpenFile }: { onOpenFile(): void }) {
       <button
         type="button"
         onClick={onOpenFile}
-        className="mt-8 flex h-72 w-full flex-col items-center justify-center gap-3 rounded-[22px] border-2 border-dashed border-rule bg-card text-ink-3 hover:border-[var(--accent)]"
+        className="mt-8 flex h-72 w-full flex-col items-center justify-center gap-3 rounded-md border border-dashed border-ink-3/50 bg-paper-2/40 text-ink-3 hover:border-[var(--accent)]"
       >
         <IconOpen size={34} className="text-[var(--accent)]" />
         <span className="text-[17px] font-semibold text-ink">Drop a book here, or click to choose one</span>

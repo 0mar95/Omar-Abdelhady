@@ -156,7 +156,7 @@ export function Reader({ onOpenFile, onLibrary }: { onOpenFile(): void; onLibrar
         <button
           type="button"
           onClick={() => setOverlay("palette")}
-          className="mr-1 hidden items-center gap-2 rounded-lg bg-paper-2 px-3 py-1.5 text-[12px] text-ink-3 hover:text-ink sm:flex [-webkit-app-region:no-drag]"
+          className="mr-1 hidden items-center gap-2 rounded-full px-3 py-1.5 text-[12px] text-ink-3 ring-1 ring-rule hover:text-ink sm:flex [-webkit-app-region:no-drag]"
         >
           <IconSearch size={14} /> Search or ask
           <kbd className="rounded border border-rule px-1 text-[10.5px]">{isMac ? "⌘K" : "Ctrl K"}</kbd>
@@ -259,7 +259,7 @@ function ReaderTitle() {
   const same = chapter?.title && chapter.title.trim().toLowerCase() === title.trim().toLowerCase();
   return (
     <div className="mx-2 min-w-0 flex-1 truncate text-center text-[12.5px]">
-      <span className="font-semibold text-ink">{title}</span>
+      <span className="font-title text-[14.5px] tracking-[0.04em] text-ink [font-variant:small-caps]">{title.toLowerCase()}</span>
       {chapter?.title && !same && (
         <span className="text-ink-3">
           {" "}
@@ -296,7 +296,7 @@ function ReaderFooter({ visible }: { visible: boolean }) {
           {info.percent}%
         </span>
       </div>
-      <div className="h-[3px] bg-rule/60">
+      <div className="h-[2px] bg-rule/60">
         <div className="h-full bg-accent transition-[width] duration-500" style={{ width: `${info.percent}%` }} />
       </div>
     </footer>
