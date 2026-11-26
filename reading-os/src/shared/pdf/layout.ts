@@ -288,7 +288,8 @@ export function findFurniture(pages: { lines: Line[]; h: number }[], stats: Font
     const trail = /\S\s+(\d{1,4}|[ivxlc]{1,7})$/i.exec(t)?.[1];
     return { lead, trail };
   };
-  const offsets = new Map<string, Set<number>>();
+  // For each header shape and side: how many times each (number − page) offset occurs.
+  const offsets = new Map<string, Map<number, number>>();
   pages.forEach((_, pi) => {
     for (const r of edges[pi]) {
       const t = rowText(r);
@@ -297,11 +298,24 @@ export function findFurniture(pages: { lines: Line[]; h: number }[], stats: Font
       const { lead, trail } = ends(t);
       for (const [side, v] of [["lead", lead], ["trail", trail]] as const) {
         const n = v ? toNumber(v) : null;
-        if (n !== null) offsets.set(`${side}|${k}`, (offsets.get(`${side}|${k}`) ?? new Set()).add(n - pi));
+        if (n === null) continue;
+        const m = offsets.get(`${side}|${k}`) ?? new Map<number, number>();
+        m.set(n - pi, (m.get(n - pi) ?? 0) + 1);
+        offsets.set(`${side}|${k}`, m);
       }
     }
   });
-  const steadySide = (k: string, side: "lead" | "trail") => (shapes.get(k) ?? 0) >= 2 && (offsets.get(`${side}|${k}`)?.size ?? 99) <= 2;
+  // The numbers climb with the pages: one or two offsets, or — in long books where
+  // unnumbered plates shift the count now and then — a few offsets covering nearly all.
+  const steadySide = (k: string, side: "lead" | "trail") => {
+    if ((shapes.get(k) ?? 0) < 2) return false;
+    const m = offsets.get(`${side}|${k}`);
+    if (!m) return false;
+    if (m.size <= 2) return true;
+    const counts = [...m.values()].sort((a, b) => b - a);
+    const total = counts.reduce((a, b) => a + b, 0);
+    return counts.slice(0, 3).reduce((a, b) => a + b, 0) >= total * 0.85 && m.size <= Math.max(3, total * 0.15);
+  };
   const pageNumberIn = (t: string): string | null => {
     const k = shape(t);
     const { lead, trail } = ends(t);

@@ -14,6 +14,8 @@ export function tidyHeading(text: string): string {
   let t = text.replace(/\s+/g, " ").trim();
   // Leftover dot leaders and page numbers ("Introduction ........ 12").
   t = t.replace(/\s*(?:[.·…]\s*){3,}\d{0,4}\s*$/, "").trim();
+  // A footnote mark on a title ("Calcium Metabolism*", "Introduction†").
+  t = t.replace(/(?<=\p{L})\s?[*†‡]+$/u, "");
   // A heading doesn't end in a full stop ("Loomings." → "Loomings"); abbreviations
   // and initials keep theirs ("etc.", "U.S.", "J. P.").
   if (/[^.]\.$/.test(t) && !/(?:\b\p{L}\.|\b(?:etc|al|Inc|Ltd|Co|vs|St|Dr|Mr|Mrs|Ms|No|Vol|ed|eds)\.)$/u.test(t)) t = t.slice(0, -1).trimEnd();
@@ -171,7 +173,12 @@ export function normalizeStructure(input: Block[], totalWords?: number): Block[]
 /** "JEFFREY McCLENDON" → "Jeffrey McClendon": names in capitals, written normally. */
 export function nameCase(line: string): string {
   // "B ." from letter-spaced type is an initial: "B."
-  return line.replace(/\b(\p{Lu}) \.(?=\s|,|$)/gu, "$1.").replace(/(\p{L}[\p{L}'’-]*)/gu, (w) => {
+  const fixed = line.replace(/\b(\p{Lu}) \.(?=\s|,|$)/gu, "$1.");
+  // Only a line set in capitals is re-cased: "Bailoor DN" keeps its initials.
+  const lower = (fixed.match(/\p{Ll}/gu) ?? []).length;
+  const upper = (fixed.match(/\p{Lu}/gu) ?? []).length;
+  if (lower > upper * 0.3) return fixed;
+  return fixed.replace(/(\p{L}[\p{L}'’-]*)/gu, (w) => {
     if (w.length <= 1 || /\p{Ll}/u.test(w.replace(/^(Mc|Mac)/, ""))) return w;
     const mc = /^(Mc|Mac)(?=\p{Lu})/u.exec(w)?.[1] ?? "";
     const rest = w.slice(mc.length).toLowerCase().replace(/(^|[-'’])(\p{L})/gu, (_, p: string, c: string) => p + c.toUpperCase());
@@ -190,13 +197,51 @@ export function chapterBylines(blocks: Block[]): Block[] {
     if (b.kind !== "heading" || b.level !== 1 || !b.number || b.byline) return;
     for (let k = i + 1; k <= i + 2 && k < blocks.length; k++) {
       const n = blocks[k];
-      if (n.kind !== "paragraph" || n.page > b.page + 1) break;
-      const text = n.spans.map((x) => x.text).join("").replace(/\s+/g, " ").trim();
+      const isLine = n.kind === "paragraph" || (n.kind === "heading" && n.level > 1);
+      if (!isLine || n.page > b.page + 1) break;
+      const lineText = (x: Block) => (x.kind === "heading" ? x.text : x.kind === "paragraph" ? x.spans.map((y) => y.text).join("") : "").replace(/\s+/g, " ").trim();
+      let text = lineText(n);
       if (text.split(" ").length > 16) break;
-      const named = nameCase(text);
-      if (isByline(named)) {
+      let last = k;
+      // "Bailoor DN, Nagesh KS," / "Chatra LK, Pai Keerthilatha": one byline over two lines.
+      while (/,\s*$/.test(text) && blocks[last + 1] && (blocks[last + 1].kind === "paragraph" || blocks[last + 1].kind === "heading")) {
+        const more = lineText(blocks[last + 1]);
+        if (!isByline(nameCase(more.replace(/,\s*$/, "")))) break;
+        text = `${text} ${more}`;
+        last++;
+      }
+      const named = nameCase(text.replace(/,\s*$/, ""));
+      // Clearly names: several people, initials, "by", capitals, or "Surname AB" — not just two capitalised words.
+      const plain = text.replace(/,\s*$/, "");
+      const clearly = /,|\b\p{Lu}\.(?:\s|$)|^by\s/u.test(plain) || (plain === plain.toUpperCase() && /\p{Lu}{2}/u.test(plain)) || SURNAME_INITIALS.test(plain);
+      if (clearly && isByline(named)) {
         b.byline = named.replace(/^by\s+/i, "");
-        drop.add(k);
+        for (let d = k; d <= last; d++) drop.add(d);
+        break;
+      }
+    }
+    if (b.byline) return;
+    // Authors set above the title on the opening page ("Bailoor DN, Nagesh KS," / "Chatra LK, …").
+    const above: number[] = [];
+    for (let k = i - 1; k >= Math.max(0, i - 3); k--) {
+      const n = blocks[k];
+      if (n.page !== b.page || !(n.kind === "paragraph" || (n.kind === "heading" && n.level > 1)) || drop.has(k)) break;
+      above.unshift(k);
+    }
+    for (let from = 0; from < above.length; from++) {
+      const text = above
+        .slice(from)
+        .map((k) => {
+          const n = blocks[k];
+          return (n.kind === "heading" ? n.text : n.kind === "paragraph" ? n.spans.map((y) => y.text).join("") : "").replace(/\s+/g, " ").trim();
+        })
+        .join(" ")
+        .replace(/,\s*$/, "");
+      if (text.split(" ").length > 16) continue;
+      const clearly = /,|\b\p{Lu}\.(?:\s|$)|^by\s/u.test(text) || (text === text.toUpperCase() && /\p{Lu}{2}/u.test(text));
+      if (clearly && isByline(nameCase(text))) {
+        b.byline = nameCase(text).replace(/^by\s+/i, "");
+        for (const k of above.slice(from)) drop.add(k);
         break;
       }
     }
@@ -507,13 +552,16 @@ const NAME = /^(?:(?:Dr|Prof|Professor|Sir|Dame)\.?\s+)?\p{Lu}[\p{L}'’.-]*(?:\
 const PUBLISHER = /\b(?:press|publishing|publishers?|wiley|elsevier|springer|quintessence|thieme|mosby|saunders|lippincott|mcgraw|routledge|penguin|harper|\bltd\b|\binc\b)/i;
 
 /** Names only: "Mark Greenwood | Ian Corbett", "Allen B. Downey". */
+/** "Bailoor DN", "Pai K": a surname and initials, as some books list authors. */
+const SURNAME_INITIALS = /^\p{Lu}[\p{Ll}'’-]+(?:\s\p{Lu}[\p{Ll}'’-]+)?\s\p{Lu}{1,3}$/u;
+
 export function isByline(line: string): boolean {
   const parts = line
     .replace(/^by\s+/i, "")
     .split(/\s*(?:\||,|&|;|\band\b|·)\s*/)
     .map((p) => p.trim())
     .filter(Boolean);
-  return parts.length > 0 && parts.length <= 6 && parts.every((p) => NAME.test(p) && !PUBLISHER.test(p) && !NOT_A_NAME.test(p));
+  return parts.length > 0 && parts.length <= 6 && parts.every((p) => (NAME.test(p) || SURNAME_INITIALS.test(p)) && !PUBLISHER.test(p) && !NOT_A_NAME.test(p));
 }
 
 /** "Gary D. Klasser, DMD" → "Gary D. Klasser"; null when the line isn't a person. */

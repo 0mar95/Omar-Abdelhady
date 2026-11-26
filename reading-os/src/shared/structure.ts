@@ -35,7 +35,20 @@ const BLANK = /^this page (?:is )?intentionally (?:left )?blank\.?$/i;
  * in the text gets one. Headings the bookmarks don't list sit below the
  * deepest level they use.
  */
-export function applyOutline(blocks: Block[], outline: OutlineItem[] | undefined): Block[] {
+/** Publishers' file labels in bookmarks, not titles: "Prelims", "Cover", "Copyright". */
+const FILE_LABEL = /^(?:prelims?|front ?matter|back ?matter|end ?matter|cover|half[- ]?title|title ?page|copyright|blank)$/i;
+
+/** "Chapter-01_The Diagnostic Sequence" → "Chapter 1 The Diagnostic Sequence". */
+export function cleanOutlineTitle(t: string): string {
+  return t
+    .replace(/_+/g, " ")
+    .replace(/^(chapter|part|section|unit)[\s-]*0*(\d+)/i, (_, w: string, n: string) => `${w} ${n}`)
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function applyOutline(blocks: Block[], raw: OutlineItem[] | undefined): Block[] {
+  const outline = raw?.map((o) => ({ ...o, title: cleanOutlineTitle(o.title) })).filter((o) => !FILE_LABEL.test(o.title));
   if (!outline || outline.length < 3) return blocks;
   const top = outline.filter((o) => o.level === 1);
   if (top.length < 2) return blocks;
@@ -44,7 +57,10 @@ export function applyOutline(blocks: Block[], outline: OutlineItem[] | undefined
   const inserts = new Map<number, HeadingBlock[]>();
   for (const o of outline) {
     if (o.level > 3) continue;
-    const want = norm(o.title);
+    // "Chapter 1 The Diagnostic Sequence" matches the page's own "The Diagnostic Sequence", numbered 1.
+    const label = /^(?:chapter|part|unit)\s+(\d{1,3}|[ivxlc]{1,7})\b[.:—–-]?\s*(.*)$/i.exec(o.title);
+    const bare = label?.[2]?.trim() ? label[2].trim() : o.title;
+    const want = norm(bare);
     if (!want) continue;
     let hit = blocks.find((b) => b.kind === "heading" && !matched.has(b) && b.page >= o.page && b.page <= o.page + 1 && sameTitle(norm(b.text), want));
     // A title the layout didn't mark as a heading (a styled paragraph).
@@ -57,6 +73,18 @@ export function applyOutline(blocks: Block[], outline: OutlineItem[] | undefined
     }
     if (hit && hit.kind === "heading") {
       hit.level = o.level as HeadingBlock["level"];
+      if (label && !hit.number && o.level === 1) hit.number = label[1];
+      // A title set over two lines, read as two pieces: the bookmark has it whole.
+      const have = norm(hit.text);
+      if (have.length < want.length && want.startsWith(have)) {
+        const i = blocks.indexOf(hit);
+        const next = blocks[i + 1];
+        const rest = next && (next.kind === "heading" || next.kind === "paragraph") ? norm(next.kind === "heading" ? next.text : text(next)) : "";
+        if (rest && want.endsWith(rest) && have.length + rest.length >= want.length - 2) blocks.splice(i + 1, 1);
+        // The title's second line may already have been taken for a byline.
+        if (hit.byline && want.endsWith(norm(hit.byline))) hit.byline = undefined;
+        hit.text = bare;
+      }
       matched.add(hit);
       continue;
     }
