@@ -2,7 +2,7 @@
 // like, whatever its format. Used by `npm run audit` to find books that
 // misbehave, and by tests to keep the engine consistent.
 
-import { blockText, spansText, type Block, type BookDoc, type ContentsEntry } from "./model.ts";
+import { blockText, type Block, type BookDoc, type ContentsEntry } from "./model.ts";
 
 export interface AuditIssue {
   check: string;
@@ -182,7 +182,3 @@ export function auditBook(book: BookDoc): AuditReport {
   return { score, issues, metrics };
 }
 
-/** For the reader: whether a block is one the audit treats as body text. */
-export function isBodyParagraph(b: Block): boolean {
-  return b.kind === "paragraph" && !b.small && spansText(b.spans).trim().length > 0;
-}

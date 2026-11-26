@@ -86,6 +86,7 @@ export function analyzeBook(raw: RawPage[], meta: BookMeta, startedAt = Date.now
     pages.map((p) => ({ w: p.w, h: p.h })),
     furniture.labels,
   );
+  blocks = dropStrayNumbers(blocks, pageInfos);
   blocks = recoverContents(blocks);
   chaptersFromContents(blocks, pageInfos);
   blocks = normalizeStructure(blocks);
@@ -250,6 +251,31 @@ export function assignChapters(blocks: Block[]): Chapter[] {
   current.end = blocks.length;
   chapters.push(current);
   return chapters;
+}
+
+/**
+ * A paragraph that is only a number is debris when it is the page's own
+ * number (left on a page that is just a photo) or sits right beside a figure
+ * or table on the same page (a label from inside the picture).
+ */
+export function dropStrayNumbers(blocks: Block[], pages: PageInfo[]): Block[] {
+  const lone = (b: Block | undefined) => {
+    if (b?.kind !== "paragraph") return null;
+    const t = b.spans.map((s) => s.text).join("").trim();
+    return /^(?:\d{1,4}|[ivxlc]{1,7})$/i.test(t) ? t : null;
+  };
+  const picture = (b: Block | undefined, page: number) => !!b && (b.kind === "figure" || b.kind === "table") && b.page === page;
+  return blocks.filter((b, i) => {
+    const t = lone(b);
+    if (t === null) return true;
+    if (pages[b.page]?.label?.toLowerCase() === t.toLowerCase()) return false;
+    // Look past neighbouring numbers: a diagram can leave several ("1", "2", "2", "1").
+    let k = i - 1;
+    while (k >= 0 && lone(blocks[k]) !== null && blocks[k].page === b.page) k--;
+    let j = i + 1;
+    while (j < blocks.length && lone(blocks[j]) !== null && blocks[j].page === b.page) j++;
+    return !(picture(blocks[k], b.page) || picture(blocks[j], b.page));
+  });
 }
 
 /** Turns "Fig 1-1", "Table 2-3" and "pages 138–139" in paragraphs into links. */

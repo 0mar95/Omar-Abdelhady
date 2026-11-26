@@ -160,11 +160,6 @@ export interface DueItem {
   card: Card;
 }
 
-/** Everything due now in these books, the most overdue first. */
-export async function dueAcross(books: { id: string; title: string }[]): Promise<DueItem[]> {
-  return (await overview(books)).due;
-}
-
 /** What's due now, how many questions there are in all, and when the next one comes due. */
 export async function overview(books: { id: string; title: string }[]): Promise<{ due: DueItem[]; total: number; next: number | null }> {
   const now = Date.now();

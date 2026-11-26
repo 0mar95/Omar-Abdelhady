@@ -11,7 +11,7 @@ import { askBooks, searchBooks } from "../search";
 import { useGlossary } from "../state/glossary";
 import { useLibrary } from "../state/library";
 import { openRecap } from "../state/recap";
-import { pageText, useReader } from "../state/reader";
+import { chapterAt, useReader } from "../state/reader";
 import { useSettings, type Theme } from "../state/settings";
 import { useStudy } from "../state/study";
 import { useListen } from "../state/listen";
@@ -233,7 +233,7 @@ export function CommandPalette({ onOpenFile, onLibrary }: { onOpenFile(): void; 
           id: `t-${t.id}`,
           group: "Sections",
           title: t.title,
-          detail: pageText(book, t.page),
+          detail: chapterAt(book, t.page),
           icon: <IconList />,
           run: () => {
             setView("clean");
@@ -252,7 +252,7 @@ export function CommandPalette({ onOpenFile, onLibrary }: { onOpenFile(): void; 
           id: `f-${b.id}`,
           group: "Figures, tables & boxes",
           title: `${b.key} · ${caption.slice(0, 100)}`,
-          detail: pageText(book, b.page),
+          detail: chapterAt(book, b.page),
           icon: <IconImage />,
           run: () => {
             setView("clean");
@@ -264,7 +264,7 @@ export function CommandPalette({ onOpenFile, onLibrary }: { onOpenFile(): void; 
     }
     const group = bookScope ? "In this book" : "In your library";
     for (const h of hits) {
-      const page = book && h.bookId === book.id ? pageText(book, h.page) : h.bookTitle;
+      const where = book && h.bookId === book.id ? "" : h.bookTitle;
       out.push({
         id: `h-${h.bookId}-${h.chunkId}`,
         group,
@@ -279,7 +279,8 @@ export function CommandPalette({ onOpenFile, onLibrary }: { onOpenFile(): void; 
                 related
               </span>
             )}
-            {shortSection(h.section)} · {page}
+            {shortSection(h.section)}
+            {where ? ` · ${where}` : ""}
           </>
         ),
         icon: <IconSearch />,
@@ -467,7 +468,7 @@ function AnswerView({ answer, onBack, onSource, bookId }: { answer: Answer; onBa
                     <span className="text-ink">{shortSection(s.section)}</span>
                     <span className="text-ink-3">
                       {" "}
-                      {book && s.bookId === book.id ? (pageText(book, s.page) ? ` · ${pageText(book, s.page)}` : "") : ` · ${s.bookTitle}`}
+                      {book && s.bookId === book.id ? "" : ` · ${s.bookTitle}`}
                     </span>
                     <span className="block truncate text-ink-3">{s.text.slice(0, 160)}</span>
                   </span>

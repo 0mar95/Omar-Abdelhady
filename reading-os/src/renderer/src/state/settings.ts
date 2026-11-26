@@ -20,7 +20,6 @@ export interface Settings {
   measure: number;
   justify: boolean;
   indent: boolean;
-  pageNumbers: boolean;
   model: string;
   embedModel: string;
   ollamaUrl: string;
@@ -48,7 +47,6 @@ export const DEFAULT_SETTINGS: Settings = {
   measure: 66,
   justify: false,
   indent: false,
-  pageNumbers: true,
   model: "qwen3.5:4b",
   embedModel: "qwen3-embedding:0.6b",
   ollamaUrl: "http://127.0.0.1:11434",

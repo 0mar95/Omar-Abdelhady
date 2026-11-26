@@ -622,18 +622,10 @@ function BlockInner({ b }: { b: Block }) {
 }
 
 /** flow: "jp" when a paragraph follows a paragraph, "jn" when one comes next (book-style indents). */
-export const BlockView = memo(function BlockView({ b, pageLabel, flow, marks }: { b: Block; pageLabel?: string; flow?: string; marks?: Highlight[] }) {
+export const BlockView = memo(function BlockView({ b, flow, marks }: { b: Block; flow?: string; marks?: Highlight[] }) {
   return (
     <>
       {marks && marks.length > 0 && <HighlightMark marks={marks} />}
-      {pageLabel && (
-        // A zero-height sibling: blocks clip their own overflow (content-visibility).
-        <div className="page-anchor" aria-hidden>
-          <span className="page-marker" title={`Page ${pageLabel} in the printed book`}>
-            {pageLabel}
-          </span>
-        </div>
-      )}
       <div data-block={b.id} data-page={b.page} className={`blk blk-${b.kind} relative${flow ? ` ${flow}` : ""}`}>
         <BlockInner b={b} />
       </div>

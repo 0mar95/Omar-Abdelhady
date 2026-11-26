@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Block, HeadingBlock, ParagraphBlock } from "./model.ts";
 import { normalizeStructure, placeFigures, tidyHeading } from "./normalize.ts";
+import { dropStrayNumbers } from "./pdf/analyze.ts";
 
 const R = { x0: 0, y0: 0, x1: 0, y1: 0 };
 let n = 0;
@@ -303,5 +304,38 @@ describe("chaptersFollowContents", () => {
     const out = normalizeStructure([{ kind: "contents", id: "c", page: 4, rect: R, chapter: 0, entries } as Block, ...heads]);
     const levels = out.filter((b): b is HeadingBlock => b.kind === "heading").map((b) => `${b.level}${b.number ? `:${b.number}` : ""} ${b.text}`);
     expect(levels).toEqual(["1:1 Developmental Defects", "2 Cleft Lip", "2 Bifid Uvula", "2 Varicosities", "2 Caliber-Persistent Artery", "1:2 Pathology of Teeth", "2 Attrition", "2 Abrasion", "1:3 Pulp Disease", "2 Pulpitis"]);
+  });
+});
+
+describe("dropStrayNumbers", () => {
+  const rect = { x0: 0, y0: 0, x1: 1, y1: 1 };
+  const p = (id: string, text: string, page = 0): Block => ({ kind: "paragraph", id, chapter: 0, page, rect, spans: [{ text }] });
+  const fig = (id: string, page = 0) => ({ kind: "figure", id, chapter: 0, page, rect, key: "", caption: [], image: null }) as unknown as Block;
+  const pages = [{ w: 1, h: 1, label: "ix" }, { w: 1, h: 1, label: "2" }];
+  it("drops the page's own number and numbers beside a picture, keeps real ones", () => {
+    const out = dropStrayNumbers([fig("f"), p("a", "ix"), p("b", "1"), p("c", "2"), fig("g"), p("d", "Text with 1 number."), p("e", "7", 1), p("h", "Body", 1)], pages);
+    expect(out.map((b) => b.id)).toEqual(["f", "g", "d", "e", "h"]);
+  });
+});
+
+describe("tidyHeading: full stops", () => {
+  it("drops a heading's closing full stop, keeps abbreviations and initials", () => {
+    expect(tidyHeading("Loomings.")).toBe("Loomings");
+    expect(tidyHeading("The Carpet-Bag.")).toBe("The Carpet-Bag");
+    expect(tidyHeading("Diseases of the U.S.")).toBe("Diseases of the U.S.");
+    expect(tidyHeading("Methods, materials, etc.")).toBe("Methods, materials, etc.");
+    expect(tidyHeading("Work of J. P.")).toBe("Work of J. P.");
+  });
+});
+
+describe("equation pieces", () => {
+  it("doesn't take a piece of an equation for a heading", () => {
+    const rect = { x0: 0, y0: 0, x1: 1, y1: 1 };
+    const out = normalizeStructure([
+      { kind: "heading", id: "h1", level: 1, text: "Inverse Square Law", chapter: 0, page: 0, rect },
+      { kind: "heading", id: "h2", level: 2, text: "(D1)2", chapter: 0, page: 0, rect },
+    ] as Block[]);
+    expect(out.find((b) => b.id === "h2")?.kind).toBe("paragraph");
+    expect(out.find((b) => b.id === "h1")?.kind).toBe("heading");
   });
 });

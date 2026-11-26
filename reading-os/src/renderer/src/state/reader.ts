@@ -60,9 +60,17 @@ export function indexBook(book: BookDoc): BookIndex {
 }
 
 /** "page 36" for books with printed pages; empty for EPUBs and documents, which have none. */
-export function pageText(book: BookDoc, page: number, word = "page"): string {
-  const label = book.pages[page]?.label;
-  return label ? `${word} ${label}` : "";
+/**
+ * Where a page falls in Kenning's own structure: "Ch 6 · Neuropathic Pain".
+ * (Printed page numbers aren't shown: the book is reflowed.)
+ */
+export function chapterAt(book: BookDoc, page: number, short = false): string {
+  const i = book.blocks.findIndex((b) => b.page >= page);
+  const ch = book.chapters[book.blocks[i < 0 ? book.blocks.length - 1 : i]?.chapter ?? -1];
+  if (!ch) return "";
+  if (short) return ch.number ? `Ch ${ch.number}` : "";
+  const title = ch.title.length > 34 ? `${ch.title.slice(0, 32).trimEnd()}…` : ch.title;
+  return ch.number ? `Ch ${ch.number} · ${title}` : title;
 }
 
 export interface JumpTarget {
@@ -122,6 +130,7 @@ export const useReader = create<ReaderStore>((set, get) => ({
     set({ status: "loading", progress: { phase: "reading", done: 0, total: 1 }, error: null, overlay: null });
     try {
       const id = await bookIdFor(file.bytes);
+      if (!file.bytes.length) throw new Error(`“${file.name}” is empty: the file has no content. If it was downloaded, try downloading it again.`);
       const format = detectFormat(file.bytes, file.name);
       let doc: PDFDocumentProxy | null = null;
       let book: BookDoc;

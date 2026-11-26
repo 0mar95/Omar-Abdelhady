@@ -425,34 +425,4 @@ export function normalizeHeadings(blocks: Block[]): void {
   for (const b of blocks) if (b.kind === "heading") b.level = rank.get(b.level) ?? 4;
 }
 
-const CHAPTER_RE = /^(?:chapter|chap\.|part|book)\s+([0-9]{1,3}|[ivxlc]{1,7}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b[.:—–-]?\s*(.*)$/i;
-const NUMBERED_RE = /^(\d{1,3})\.?\s+(\p{Lu}.{2,})$/u;
 
-/**
- * "Chapter 3" headings give their number to the chapter: "Chapter 3: Pain" →
- * number 3, title "Pain"; a bare "Chapter 3" takes the title from the heading
- * right after it.
- */
-export function chapterNumbers(blocks: Block[]): Block[] {
-  const out: Block[] = [];
-  for (let i = 0; i < blocks.length; i++) {
-    const b = blocks[i];
-    if (b.kind !== "heading" || b.level !== 1 || b.number) {
-      out.push(b);
-      continue;
-    }
-    const m = CHAPTER_RE.exec(b.text) ?? NUMBERED_RE.exec(b.text);
-    if (!m) {
-      out.push(b);
-      continue;
-    }
-    const next = blocks[i + 1];
-    if (!m[2].trim() && next?.kind === "heading" && next.page === b.page) {
-      out.push({ ...b, number: m[1], text: next.text });
-      i++;
-      continue;
-    }
-    out.push(m[2].trim() ? { ...b, number: m[1], text: m[2].trim() } : b);
-  }
-  return out;
-}

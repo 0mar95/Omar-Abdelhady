@@ -14,6 +14,9 @@ export function tidyHeading(text: string): string {
   let t = text.replace(/\s+/g, " ").trim();
   // Leftover dot leaders and page numbers ("Introduction ........ 12").
   t = t.replace(/\s*(?:[.·…]\s*){3,}\d{0,4}\s*$/, "").trim();
+  // A heading doesn't end in a full stop ("Loomings." → "Loomings"); abbreviations
+  // and initials keep theirs ("etc.", "U.S.", "J. P.").
+  if (/[^.]\.$/.test(t) && !/(?:\b\p{L}\.|\b(?:etc|al|Inc|Ltd|Co|vs|St|Dr|Mr|Mrs|Ms|No|Vol|ed|eds)\.)$/u.test(t)) t = t.slice(0, -1).trimEnd();
   const letters = t.replace(/[^\p{L}]/gu, "");
   const words = t.split(" ");
   if (letters.length >= 6 && words.length >= 2 && letters === letters.toUpperCase() && letters !== letters.toLowerCase()) {
@@ -38,6 +41,12 @@ export function normalizeStructure(input: Block[], totalWords?: number): Block[]
       : b,
   );
   for (const b of blocks) if (b.kind === "heading") b.text = tidyHeading(b.text);
+  // A piece of an equation set large ("(D1)2", "x = 2") is not a heading.
+  blocks = blocks.map((b) =>
+    b.kind === "heading" && (b.text.match(/\p{L}/gu) ?? []).length < 3 && /[()=+^/×÷√∑]/.test(b.text)
+      ? { kind: "paragraph", id: b.id, page: b.page, rect: b.rect, chapter: b.chapter, spans: [{ text: b.text }] }
+      : b,
+  );
 
   // "Chapter 3" + the title just after it → one chapter heading, numbered 3.
   const merged: Block[] = [];

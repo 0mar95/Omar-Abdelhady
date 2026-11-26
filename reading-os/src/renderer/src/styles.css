@@ -254,7 +254,6 @@ button {
 .ai-md ul > li::marker {
   color: var(--accent);
 }
-.page-anchor,
 .note-anchor {
   position: relative;
   height: 0;
@@ -343,34 +342,6 @@ button {
   word-break: break-word;
 }
 
-/* The book's own contents page. */
-.book .contents {
-  list-style: none;
-  margin: 0.5em 0 2.5em;
-  padding: 0;
-}
-.book .contents li {
-  margin: 0;
-  padding: 0;
-}
-.book .contents button {
-  display: flex;
-  align-items: baseline;
-  gap: 0.6em;
-  width: 100%;
-  padding: 0.38em 0.5em;
-  margin: 0 -0.5em;
-  border-radius: 6px;
-  text-align: left;
-  line-height: 1.35;
-  color: var(--ink);
-}
-.book .contents button:not(:disabled):hover {
-  background: var(--paper-2);
-}
-.book .contents button:not(:disabled) {
-  cursor: pointer;
-}
 /* Focus mode: only the paragraph being read is at full strength. */
 .book.focus [data-block] {
   opacity: 0.26;
@@ -1099,69 +1070,8 @@ button {
   text-indent: 0 !important;
 }
 
-/* Sections sit under their chapter; numbers keep one column so titles line up. */
-.book .contents li.sub {
-  padding-left: 2.2em;
-}
-.book .contents li.chapter:not(:first-child) {
-  margin-top: 0.35em;
-}
-.book .contents .num {
-  flex: none;
-  min-width: 1.6em;
-  color: var(--accent);
-  font-variant-numeric: lining-nums tabular-nums;
-}
-.book .contents li.sub .num {
-  min-width: 2.4em;
-  color: var(--ink-3);
-}
-.book .contents .leader {
-  flex: 1;
-  min-width: 1.5em;
-  border-bottom: 1px dotted color-mix(in srgb, var(--ink-3) 70%, transparent);
-  transform: translateY(-0.3em);
-}
-.book .contents .pg {
-  color: var(--ink-3);
-  font-variant-numeric: lining-nums tabular-nums;
-  font-size: 0.9em;
-}
-
-/* Page numbers of the original, shown quietly in the margin. */
-.page-marker {
-  position: absolute;
-  left: -4.2rem;
-  width: 3.2rem;
-  text-align: right;
-  font-family: var(--ui-font);
-  font-size: 11px;
-  line-height: 1;
-  top: 0.5em;
-  color: var(--ink-3);
-  opacity: 0.7;
-  font-variant-numeric: tabular-nums;
-  cursor: default;
-  user-select: none;
-}
-@media (max-width: 900px) {
-  .page-marker {
-    display: none;
-  }
-}
-
 /* One margin column on wide windows: the page number, highlight marks and AI
    notes all hang from the same line to the right of the text. */
-.with-gutter .page-marker {
-  left: calc(100% + 2.75rem + 0.85rem);
-  width: auto;
-  white-space: nowrap;
-  text-align: left;
-  top: 0.55em;
-}
-.with-gutter .page-marker::before {
-  content: "p. ";
-}
 
 /* Highlights */
 ::highlight(reader-hl) {
@@ -1272,66 +1182,6 @@ button {
   background: var(--accent);
   animation: blink 1s steps(1) infinite;
   border-radius: 1px;
-}
-
-/* pdf.js text layer for the page view (selectable text over the canvas),
-   following pdf.js's own viewer styles. */
-.textLayer {
-  position: absolute;
-  text-align: initial;
-  inset: 0;
-  overflow: clip;
-  opacity: 1;
-  line-height: 1;
-  letter-spacing: normal;
-  word-spacing: normal;
-  text-size-adjust: none;
-  forced-color-adjust: none;
-  transform-origin: 0 0;
-  caret-color: CanvasText;
-  z-index: 0;
-  --min-font-size: 1;
-  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
-  --min-font-size-inv: calc(1 / var(--min-font-size));
-}
-.textLayer span,
-.textLayer br {
-  color: transparent;
-  position: absolute;
-  white-space: pre;
-  cursor: text;
-  transform-origin: 0% 0%;
-  user-select: text;
-}
-.textLayer > :not(.markedContent),
-.textLayer .markedContent span:not(.markedContent) {
-  z-index: 1;
-  --font-height: 0;
-  font-size: calc(var(--text-scale-factor) * var(--font-height));
-  --scale-x: 1;
-  --rotate: 0deg;
-  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
-}
-.textLayer .markedContent {
-  display: contents;
-}
-.textLayer ::selection {
-  background: color-mix(in srgb, var(--accent) 35%, transparent);
-  color: transparent;
-}
-.textLayer br::selection {
-  background: transparent;
-}
-.textLayer .endOfContent {
-  display: block;
-  position: absolute;
-  inset: 100% 0 0;
-  z-index: 0;
-  cursor: default;
-  user-select: none;
-}
-.textLayer.selecting .endOfContent {
-  top: 0;
 }
 
 .scroll-quiet {

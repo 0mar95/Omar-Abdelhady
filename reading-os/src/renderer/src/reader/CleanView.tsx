@@ -184,8 +184,6 @@ export const CleanView = memo(function CleanView({ scrollRef }: { scrollRef: Rea
         {opening.listAtTop && <ChapterList />}
         {book.blocks.map((b, i) => {
           if (b.id === opening.skip || b.id === opening.cover || pulled.has(b.id)) return null;
-          // Printed page numbers belong to the PDF, not to this book: not shown.
-          const label = undefined;
           const attached = cardsByBlock.get(b.id);
           const note = settings.marginNotes && b.kind === "heading" ? notes.get(b.id) : undefined;
           const isWorking = settings.marginNotes && working === b.id;
@@ -193,7 +191,6 @@ export const CleanView = memo(function CleanView({ scrollRef }: { scrollRef: Rea
             <BlockWithCards
               key={b.id}
               block={b}
-              label={label}
               flow={flows[i]}
               cards={attached}
               onRegenerate={regenerate}
@@ -223,7 +220,6 @@ export const CleanView = memo(function CleanView({ scrollRef }: { scrollRef: Rea
 
 const BlockWithCards = memo(function BlockWithCards({
   block,
-  label,
   flow,
   cards,
   onRegenerate,
@@ -234,7 +230,6 @@ const BlockWithCards = memo(function BlockWithCards({
   quiz,
 }: {
   block: Block;
-  label?: string;
   flow?: string;
   cards?: Card[];
   onRegenerate(c: Card): void;
@@ -247,7 +242,7 @@ const BlockWithCards = memo(function BlockWithCards({
   return (
     <>
       {gutter && <GutterNote note={note} working={!!working} level={block.kind === "heading" ? block.level : 2} />}
-      <BlockView b={block} pageLabel={label} flow={flow} marks={marks} />
+      <BlockView b={block} flow={flow} marks={marks} />
       {!gutter && <InlineNote note={note} />}
       {cards?.map((c) => <InlineCard key={c.id} card={c} onRegenerate={onRegenerate} />)}
       {quiz && <SectionQuiz headingId={quiz} />}

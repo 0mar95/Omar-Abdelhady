@@ -7,7 +7,7 @@ import type { Block } from "../../../shared/model";
 import { platform } from "../platform";
 import { useGlossary } from "../state/glossary";
 import { useLibrary } from "../state/library";
-import { blockAt, pageText, useReader } from "../state/reader";
+import { blockAt, chapterAt, useReader } from "../state/reader";
 import { IconSearch, IconSparkle } from "../ui/icons";
 import { FigureImage, Spans } from "./BlockView";
 
@@ -162,7 +162,7 @@ function XrefCard({ refKey }: { refKey: string }) {
       <div className="mb-2 flex items-baseline gap-2">
         <span className="font-semibold text-accent">{refKey}</span>
         <span className="text-[11px] text-ink-3">
-          {book.pages[b.page]?.label ? `page ${book.pages[b.page].label} · ` : ""}click the link to go there
+          click the link to go there
         </span>
       </div>
       {b.kind === "figure" && (
@@ -274,7 +274,7 @@ function TermCard({ termKey, onDone }: { termKey: string; onDone(): void }) {
       </blockquote>
       <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
         <button type="button" onClick={() => go(t.blockId)} className="text-link hover:underline">
-          {pageText(book, t.page) ? `Defined on ${pageText(book, t.page)}` : "Where it's defined"}
+          Where it’s defined{chapterAt(book, t.page, true) ? ` · ${chapterAt(book, t.page, true)}` : ""}
         </button>
         {t.occurrences.length > 1 && next !== undefined && (
           <button type="button" onClick={() => go(book.blocks[next].id)} className="text-link hover:underline">

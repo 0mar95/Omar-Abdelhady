@@ -253,7 +253,7 @@ function ContinueCard({ e, onOpen }: { e: LibraryEntry; onOpen(): void }) {
         {chapter && <div className="mt-3 truncate font-title text-[18px] italic text-ink-2">{chapter}</div>}
         <div className="mt-7 flex flex-wrap items-center gap-x-6 gap-y-3">
           <button type="button" onClick={onOpen} className="h-[44px] rounded-full bg-[var(--accent)] px-6 text-[14px] font-medium text-paper hover:brightness-110">
-            Resume{e.pageLabel && fmt(e) === "pdf" ? ` · page ${e.pageLabel}` : ""}
+            Resume reading
           </button>
           <div className="min-w-[200px] max-w-[320px] flex-1">
             <div className="flex justify-between gap-3 text-[12px] text-ink-3">

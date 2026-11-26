@@ -87,7 +87,7 @@ export function figureContext(book: BookDoc, ix: BookIndex, figureId: string): R
   const fig = book.blocks[i];
   const base = contextFor(book, ix, figureId, "");
   if (fig.kind !== "figure") return base;
-  const caption = [fig.key, fig.caption.map((s) => s.text).join(""), fig.labels && `Labels in the figure: ${fig.labels}`].filter(Boolean).join("\n");
+  const caption = [labelled(fig.key, fig.caption.map((s) => s.text).join("")), fig.labels && `Labels in the figure: ${fig.labels}`].filter(Boolean).join("\n");
   // Paragraphs in this chapter that mention the figure ("Fig 1-22"), nearest first.
   const ch = book.chapters[fig.chapter];
   const mentions: string[] = [];
@@ -102,10 +102,18 @@ export function figureContext(book: BookDoc, ix: BookIndex, figureId: string): R
   return { ...base, before: discuss.slice(0, 2400), paragraph: caption.slice(0, 1500), selection: caption.slice(0, 1500) };
 }
 
+/** "Fig 1-4 The trigeminal complex": the label once, even when the caption already starts with it. */
+function labelled(key: string | undefined, caption: string): string {
+  const c = caption.trim();
+  if (!key) return c;
+  const norm = (s: string) => s.toLowerCase().replace(/^fig(?:ure)?s?\.?\s*/, "fig ").replace(/[\s.–-]+/g, "");
+  return norm(c.slice(0, key.length + 4)).startsWith(norm(key)) || !c ? c || key : `${key} ${c}`;
+}
+
 /** "What am I looking at?" — the answer streams into a card under the figure. */
 export function explainFigure(book: BookDoc, ix: BookIndex, figureId: string): string {
   const fig = book.blocks[ix.byId.get(figureId) ?? 0];
-  const quote = fig.kind === "figure" ? [fig.key, fig.caption.map((s) => s.text).join("")].filter(Boolean).join(" ") : "Figure";
+  const quote = fig.kind === "figure" ? labelled(fig.key, fig.caption.map((s) => s.text).join("")) : "Figure";
   return useCards.getState().run("figure", figureId, quote, figureContext(book, ix, figureId));
 }
 
