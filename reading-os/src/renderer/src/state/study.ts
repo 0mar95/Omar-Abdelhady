@@ -291,7 +291,10 @@ export function quizSections(book: BookDoc, ix: BookIndex): Map<string, string> 
     if (head.kind === "heading" && head.level === 1 && groupStart >= 0 && wordsIn(groupStart, at) >= 120) close(groupStart, at);
     if (head.kind === "heading" && head.level === 1) groupStart = -1;
     if (groupStart < 0) groupStart = at;
-    if (wordsIn(groupStart, next) >= 220) {
+    // A chapter's opening lines before its first section join that section's quiz,
+    // unless the introduction is a real section in its own right.
+    const intro = book.blocks[groupStart].kind === "heading" && (book.blocks[groupStart] as { level: number }).level === 1 && groupStart === at;
+    if (wordsIn(groupStart, next) >= (intro ? 400 : 220)) {
       close(groupStart, next);
       groupStart = -1;
     }

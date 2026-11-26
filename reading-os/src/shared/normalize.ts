@@ -70,10 +70,23 @@ export function normalizeStructure(input: Block[], totalWords?: number): Block[]
       merged.push({ ...b, number: m[1], text: m[2].trim() });
       continue;
     }
+    // "Chapter 3" with its title set as an ordinary line just after it.
+    if (m && !m[2].trim() && next?.kind === "paragraph" && next.page <= b.page + 1) {
+      const title = next.spans.map((x) => x.text).join("").replace(/\s+/g, " ").trim();
+      if (titleLike(title)) {
+        merged.push({ ...b, number: m[1], text: tidyHeading(title) });
+        i++;
+        continue;
+      }
+    }
     const n = b.level === 1 ? NUMBERED.exec(b.text) : null;
     merged.push(n ? { ...b, number: n[1], text: n[2].trim() } : b);
   }
   blocks = merged;
+  blocks = chapterBylines(blocks);
+  // Before anything else reads headings: the chapter's own contents list would
+  // otherwise pass for a page of headings, or for the first copy of each.
+  blocks = dropChapterContents(blocks);
 
   blocks = recoverContents(blocks);
   tidyContents(blocks);
@@ -150,6 +163,114 @@ export function normalizeStructure(input: Block[], totalWords?: number): Block[]
     b.level = to as HeadingBlock["level"];
   }
   return blocks;
+}
+
+/** "JEFFREY McCLENDON" → "Jeffrey McClendon": names in capitals, written normally. */
+export function nameCase(line: string): string {
+  return line.replace(/(\p{L}[\p{L}'’-]*)/gu, (w) => {
+    if (w.length <= 1 || /\p{Ll}/u.test(w.replace(/^(Mc|Mac)/, ""))) return w;
+    const mc = /^(Mc|Mac)(?=\p{Lu})/u.exec(w)?.[1] ?? "";
+    const rest = w.slice(mc.length).toLowerCase().replace(/(^|[-'’])(\p{L})/gu, (_, p: string, c: string) => p + c.toUpperCase());
+    return mc + rest;
+  });
+}
+
+/**
+ * The authors printed under a chapter's title ("JEFFREY McCLENDON, JONATHAN B.
+ * LEVINE") become the chapter's byline, shown with the title, not as text.
+ */
+function chapterBylines(blocks: Block[]): Block[] {
+  const drop = new Set<number>();
+  blocks.forEach((b, i) => {
+    // Numbered chapters only: a book's own title page keeps its editors.
+    if (b.kind !== "heading" || b.level !== 1 || !b.number || b.byline) return;
+    for (let k = i + 1; k <= i + 2 && k < blocks.length; k++) {
+      const n = blocks[k];
+      if (n.kind !== "paragraph" || n.page > b.page + 1) break;
+      const text = n.spans.map((x) => x.text).join("").replace(/\s+/g, " ").trim();
+      if (text.split(" ").length > 16) break;
+      const named = nameCase(text);
+      if (isByline(named)) {
+        b.byline = named.replace(/^by\s+/i, "");
+        drop.add(k);
+        break;
+      }
+    }
+  });
+  return drop.size ? blocks.filter((_, i) => !drop.has(i)) : blocks;
+}
+
+/** A line that reads as a title: short, capitalised, not a sentence. */
+function titleLike(t: string): boolean {
+  const words = t.split(" ").length;
+  return t.length >= 3 && t.length <= 110 && words <= 14 && /^[\p{Lu}\d“"‘']/u.test(t) && !/[.,;:]$/.test(t) && !/\b(?:is|are|was|were)\b.*\b(?:the|a)\b.*\b\w+ed\b/.test(t);
+}
+
+const key = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+
+/**
+ * A chapter's own little contents list at its start ("The biologic model",
+ * "55 The neutral zone", "66 Seven line FEE analysis 69 The ‘FEE appliance’…",
+ * "82"): lines that only repeat headings found later in the chapter, with or
+ * without page numbers. Kenning shows its own list, so they go — when there
+ * are at least three, so a single real heading is never taken.
+ */
+export function dropChapterContents(blocks: Block[]): Block[] {
+  const drop = new Set<number>();
+  const starts = blocks.map((b, i) => (b.kind === "heading" && b.level === 1 ? i : -1)).filter((i) => i >= 0);
+  for (let c = 0; c < starts.length; c++) {
+    const from = starts[c];
+    const to = starts[c + 1] ?? blocks.length;
+    const later = new Map<string, number[]>();
+    for (let k = from + 1; k < to; k++) {
+      const b = blocks[k];
+      if (b.kind === "heading") later.set(key(b.text), [...(later.get(key(b.text)) ?? []), k]);
+    }
+    // Is `t` made of later headings (other than block k itself), separated by page numbers?
+    const isList = (t: string, k: number) => {
+      const tokens = t.replace(/\s+/g, " ").trim().split(" ");
+      const num = (w: string) => /^\d{1,4}$/.test(w);
+      let a = 0;
+      while (a < tokens.length && num(tokens[a])) a++;
+      if (a >= tokens.length) return "number";
+      // Numbers can end a title ("Clinical case 3 1") or be the page number after it.
+      const z = tokens.length;
+      const ok = new Array(z + 1).fill(false);
+      ok[a] = true;
+      for (let i = a; i < z; i++) {
+        if (!ok[i]) continue;
+        for (let j = i + 1; j <= z; j++) {
+          const at = later.get(key(tokens.slice(i, j).join(" ")));
+          if (!at || !at.some((x) => x > k)) continue;
+          ok[j] = true;
+          if (j < z && num(tokens[j])) ok[j + 1] = true;
+        }
+      }
+      for (let j = z; j > a; j--) {
+        if (ok[j]) return "entry";
+        if (!num(tokens[j - 1])) break;
+      }
+      return null;
+    };
+    const found: number[] = [];
+    let entries = 0;
+    for (let k = from + 1; k < to; k++) {
+      const b = blocks[k];
+      if (b.kind === "figure" || b.kind === "about") continue;
+      const t = b.kind === "heading" ? b.text : b.kind === "paragraph" ? b.spans.map((x) => x.text).join("") : null;
+      if (t === null) break;
+      const kind = isList(t, k);
+      if (kind) {
+        found.push(k);
+        if (kind === "entry") entries++;
+        continue;
+      }
+      // Bylines and the chapter's title lines sit among them; body text ends the opening.
+      if (t.split(/\s+/).length > 25) break;
+    }
+    if (entries >= 3) for (const k of found) drop.add(k);
+  }
+  return drop.size ? blocks.filter((_, i) => !drop.has(i)) : blocks;
 }
 
 // Words only a copyright / cataloguing page uses.

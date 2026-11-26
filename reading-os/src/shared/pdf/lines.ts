@@ -235,6 +235,18 @@ function makeLine(page: number, runs: Run[], row: Row): Line {
   const baseRuns = runs.filter((r) => r.size >= size * 0.8);
   const baseline = baseRuns.length ? median(baseRuns.map((r) => r.y)) : row.y;
 
+  // Letter-spaced type (tracked capitals in bylines and openers) sets every
+  // letter apart: the gap between letters is then the line's normal spacing,
+  // and only a clearly wider gap is a word space.
+  let tracking = 0;
+  const glyphs = runs.filter((r) => r.str.trim());
+  if (glyphs.length >= 8 && glyphs.filter((r) => r.str.trim().length <= 2).length >= glyphs.length * 0.7) {
+    const gaps: number[] = [];
+    for (let k = 1; k < runs.length; k++) if (runs[k].str.trim() && runs[k - 1].str.trim()) gaps.push(runs[k].x - (runs[k - 1].x + runs[k - 1].w));
+    const g = gaps.filter((x) => x > 0).sort((a, b) => a - b);
+    if (g.length >= 6) tracking = g[Math.floor(g.length / 2)];
+  }
+
   const spans: Span[] = [];
   let prevEnd = -Infinity;
   let prevSize = size;
@@ -244,7 +256,7 @@ function makeLine(page: number, runs: Run[], row: Row): Line {
     const lowered = r.y - baseline > 0.1 * size;
     let text = normalizeText(r.str);
     const gap = r.x - prevEnd;
-    const needsSpace = spans.length > 0 && gap > 0.12 * Math.min(prevSize, r.size);
+    const needsSpace = spans.length > 0 && gap > (tracking ? tracking + 0.2 * size : 0.12 * Math.min(prevSize, r.size));
     const last = spans[spans.length - 1];
     if (needsSpace && last && !/\s$/.test(last.text) && !/^\s/.test(text)) {
       // A citation directly after a word should not get a space before it.

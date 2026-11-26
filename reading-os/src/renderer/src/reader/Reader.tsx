@@ -35,8 +35,13 @@ export function Reader({ onOpenFile, onLibrary }: { onOpenFile(): void; onLibrar
 
   useEffect(() => {
     void useCards.getState().load(book.id);
+    // Load the voice in the background once the page has settled, so Listen starts at once.
+    const warm = setTimeout(() => useListen.getState().warm(), 4000);
     // Leaving the book stops reading aloud.
-    return () => useListen.getState().stop();
+    return () => {
+      clearTimeout(warm);
+      useListen.getState().stop();
+    };
   }, [book.id]);
 
   // Bars fade away while reading forward, come back on scroll up or near the

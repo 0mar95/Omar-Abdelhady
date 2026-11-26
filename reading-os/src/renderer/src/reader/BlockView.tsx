@@ -2,6 +2,7 @@
 // links) are plain elements with data attributes; Reader handles hover and
 // clicks for all of them with a few delegated listeners.
 
+import { Title } from "../ui/Title";
 import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 import { create } from "zustand";
 import type { AboutBlock, Block, BoxBlock, HeadingBlock, FigureBlock, Span, TableBlock, TitlePageBlock } from "../../../shared/model";
@@ -387,7 +388,9 @@ export function TitlePage({ b }: { b: Pick<TitlePageBlock, "title" | "subtitle" 
       {meta && <p className="meta">{meta}</p>}
       {b.details.length > 0 && (
         <details className="more">
-          <summary>From the title page</summary>
+          <summary>
+            More from the title page <span aria-hidden>›</span>
+          </summary>
           {b.details.map((d, i) => (
             <p key={i}>{d}</p>
           ))}
@@ -418,7 +421,9 @@ export function ChapterList() {
             <li key={i}>
               <button type="button" className="chapter-row" onClick={() => go(head.id)}>
                 <span className="num">{c.number}</span>
-                <span className="title">{c.title}</span>
+                <span className="title">
+                  <Title text={c.title} />
+                </span>
                 {o && <span className="time">{o.minutes} min</span>}
               </button>
               {sections.length > 0 && sections.length <= 40 && (
@@ -426,7 +431,7 @@ export function ChapterList() {
                   {sections.map((t) => (
                     <li key={t.id}>
                       <button type="button" onClick={() => go(t.blockId)}>
-                        {t.title}
+                        <Title text={t.title} />
                       </button>
                     </li>
                   ))}
@@ -472,7 +477,9 @@ function ChapterOpener({ b }: { b: HeadingBlock }) {
   return (
     <header className="chapter-opener">
       {b.number && <div className="num">{b.number}</div>}
-      <h1 id={b.id}>{b.text}</h1>
+      <h1 id={b.id}>
+        <Title text={b.text} />
+      </h1>
       {o?.authors && <p className="authors">{o.authors}</p>}
       {o && (
         <p className="meta">
@@ -501,7 +508,7 @@ function ChapterOpener({ b }: { b: HeadingBlock }) {
             {o.sections.map((s) => (
               <li key={s.id}>
                 <button type="button" onClick={() => useReader.getState().jumpTo({ blockId: s.id })}>
-                  {s.text}
+                  <Title text={s.text} />
                 </button>
               </li>
             ))}
@@ -519,9 +526,23 @@ function BlockInner({ b }: { b: Block }) {
   switch (b.kind) {
     case "heading":
       if (b.level === 1) return <ChapterOpener b={b} />;
-      if (b.level === 2) return <h2 id={b.id}>{b.text}</h2>;
-      if (b.level === 3) return <h3 id={b.id}>{b.text}</h3>;
-      return <h4 id={b.id}>{b.text}</h4>;
+      if (b.level === 2)
+        return (
+          <h2 id={b.id}>
+            <Title text={b.text} />
+          </h2>
+        );
+      if (b.level === 3)
+        return (
+          <h3 id={b.id}>
+            <Title text={b.text} />
+          </h3>
+        );
+      return (
+        <h4 id={b.id}>
+          <Title text={b.text} />
+        </h4>
+      );
     case "paragraph":
       return (
         <p className={b.small ? "small" : undefined}>

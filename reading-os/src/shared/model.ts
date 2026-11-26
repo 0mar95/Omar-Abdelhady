@@ -3,7 +3,7 @@
 // the page and rectangle it came from so the original page can always be shown.
 
 /** Bump whenever extraction output changes so cached books are re-extracted. */
-export const EXTRACTOR_VERSION = 21;
+export const EXTRACTOR_VERSION = 22;
 
 /** Rectangle in PDF points, origin at the top-left of the page. */
 export interface Rect {
@@ -46,6 +46,8 @@ export interface HeadingBlock extends BlockBase {
   text: string;
   /** Chapter number shown above a level-1 heading, e.g. "2". */
   number?: string;
+  /** A chapter's authors, as printed under its title. */
+  byline?: string;
 }
 
 export interface ParagraphBlock extends BlockBase {

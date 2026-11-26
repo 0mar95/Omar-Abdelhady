@@ -58,6 +58,8 @@ interface ListenStore {
   setVoice(id: string): void;
   /** Downloads the natural voices (first time) and switches to them. */
   getNatural(): Promise<void>;
+  /** Loads already-downloaded voices in the background (never downloads). */
+  warm(): void;
 }
 
 
@@ -158,6 +160,11 @@ export const useListen = create<ListenStore>((set, get) => ({
     save();
     audio.clear();
     if (get().playing) get().skip(0);
+  },
+  warm() {
+    const v = platform.voices;
+    if (!v || get().natural?.state !== "downloaded") return;
+    void v.prepare().then((natural) => set({ natural }));
   },
   async getNatural() {
     const v = platform.voices;

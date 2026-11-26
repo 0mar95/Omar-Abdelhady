@@ -1360,3 +1360,35 @@ button {
   font-size: 14px;
   color: var(--pencil);
 }
+
+/* Classification codes after a section name: small and quiet, the name reads first. */
+.title-codes {
+  display: inline-block;
+  margin-left: 0.55em;
+  font-family: var(--ui-font);
+  font-size: 0.6em;
+  font-weight: 400;
+  font-style: normal;
+  letter-spacing: 0.01em;
+  color: var(--ink-3);
+  vertical-align: 0.15em;
+  white-space: normal;
+}
+.chapter-opener h1 .title-codes {
+  display: block;
+  margin: 0.5em 0 0;
+  font-size: 0.32em;
+  vertical-align: baseline;
+}
+.title-page .more summary span {
+  display: inline-block;
+  margin-left: 0.2em;
+  transition: transform 0.2s ease;
+}
+.title-page .more[open] summary span {
+  transform: rotate(90deg);
+}
+.title-page .more summary {
+  color: var(--pencil);
+  font-weight: 500;
+}

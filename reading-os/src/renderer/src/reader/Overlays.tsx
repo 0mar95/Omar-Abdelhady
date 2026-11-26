@@ -1,6 +1,7 @@
 // Transient overlays: table of contents, typography, figure zoom. They appear
 // on demand and close with Esc; the page itself never shares space with them.
 
+import { Title } from "../ui/Title";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { platform } from "../platform";
 import { useNotes } from "../state/notes";
@@ -67,7 +68,9 @@ export function TocSheet() {
                 className={`flex w-full items-baseline gap-2 rounded-md px-2 py-1.5 text-left hover:bg-paper-2 ${active ? "bg-accent-soft text-ink" : ""}`}
                 style={{ paddingLeft: 8 + (t.level - 1) * 14 }}
               >
-                <span className={`min-w-0 flex-1 ${t.level === 1 ? "text-[13.5px] font-semibold" : t.level === 2 ? "text-[13px] text-ink" : "text-[12.5px] text-ink-2"}`}>{t.title}</span>
+                <span className={`min-w-0 flex-1 ${t.level === 1 ? "text-[13.5px] font-semibold" : t.level === 2 ? "text-[13px] text-ink" : "text-[12.5px] text-ink-2"}`}>
+                  <Title text={t.title} />
+                </span>
               </button>
             );
           })}

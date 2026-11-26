@@ -52,7 +52,7 @@ export function outlineOf(book: BookDoc, ix: BookIndex): BookOutline {
     byHeading.set(head.id, {
       number: head.number,
       minutes: Math.max(1, Math.round(words / WPM)),
-      authors: authors.get(norm(head.text)),
+      authors: authors.get(norm(head.text)) ?? (head.kind === "heading" ? head.byline : undefined),
       keyPoints,
       sections: sections.length >= 3 && sections.length <= 14 ? sections : [],
     });

@@ -339,3 +339,61 @@ describe("equation pieces", () => {
     expect(out.find((b) => b.id === "h1")?.kind).toBe("heading");
   });
 });
+
+describe("chapter openers with their own contents", () => {
+  const rect = { x0: 0, y0: 0, x1: 1, y1: 1 };
+  const h = (id: string, level: 1 | 2, text: string, page = 0): Block => ({ kind: "heading", id, level, text, chapter: 0, page, rect });
+  const p = (id: string, text: string, page = 0): Block => ({ kind: "paragraph", id, chapter: 0, page, rect, spans: [{ text }] });
+  const body = "When planning comprehensive treatment, the clinician must initially determine whether the patient’s dentition is in a state of health or adaptation and pathology, and act on it.";
+  const out = normalizeStructure([
+    h("c", 1, "Chapter 3"),
+    p("t", "Integration of Function and Esthetics"),
+    p("a", "JEFFREY McCLENDON, JONATHAN B. LEVINE"),
+    h("j1", 2, "The biologic model"),
+    h("j2", 2, "55 The neutral zone"),
+    h("j3", 2, "62 Soft tissue profile analysis"),
+    h("j4", 2, "66 Introduction of seven line FEE analysis 69 The ‘FEE appliance’ for diagnosis, stabilization and visualization"),
+    h("j5", 2, "72 Clinical case 3 1"),
+    p("j6", "82"),
+    p("b0", body),
+    h("s1", 2, "The Biologic Model", 1),
+    p("b1", body, 1),
+    h("s2", 2, "The Neutral Zone", 2),
+    h("s3", 2, "Soft Tissue Profile Analysis", 3),
+    h("s4", 2, "Introduction of Seven LINE FEE ANALYSIS", 4),
+    h("s5", 2, "The ‘FEE Appliance’ for Diagnosis, Stabilization and Visualization", 5),
+    h("s6", 2, "Clinical Case 3.1", 6),
+  ]);
+  it("takes the chapter's title from the line after “Chapter 3”", () => {
+    const c = out.find((b) => b.id === "c") as HeadingBlock;
+    expect(c.number).toBe("3");
+    expect(c.text).toBe("Integration of Function and Esthetics");
+    expect(out.some((b) => b.id === "t")).toBe(false);
+  });
+  it("drops the chapter's own contents list, keeps the real headings and the byline", () => {
+    const ids = out.map((b) => b.id);
+    for (const j of ["j1", "j2", "j3", "j4", "j5", "j6"]) expect(ids).not.toContain(j);
+    for (const k of ["b0", "s1", "s2", "s3", "s4", "s5", "s6"]) expect(ids).toContain(k);
+    expect((out.find((b) => b.id === "c") as HeadingBlock).byline).toBe("Jeffrey McClendon, Jonathan B. Levine");
+  });
+  it("keeps a chapter's first real heading", () => {
+    const plain = normalizeStructure([h("c", 1, "Pain"), h("x", 2, "Background"), p("y", body), h("z", 2, "Methods"), p("w", body)]);
+    expect(plain.map((b) => b.id)).toEqual(["c", "x", "y", "z", "w"]);
+  });
+});
+
+describe("chapter bylines", () => {
+  const rect = { x0: 0, y0: 0, x1: 1, y1: 1 };
+  it("moves the authors under a chapter title into its byline, in normal capitals", () => {
+    const out = normalizeStructure([
+      { kind: "heading", id: "c", level: 1, text: "Chapter 3", chapter: 0, page: 0, rect },
+      { kind: "paragraph", id: "t", chapter: 0, page: 0, rect, spans: [{ text: "Integration of Function and Esthetics" }] },
+      { kind: "paragraph", id: "a", chapter: 0, page: 0, rect, spans: [{ text: "JEFFREY McCLENDON, JONATHAN B. LEVINE" }] },
+      { kind: "paragraph", id: "p", chapter: 0, page: 0, rect, spans: [{ text: "When planning comprehensive treatment, the clinician must first decide many things about the case at hand." }] },
+    ] as Block[]);
+    const c = out.find((b) => b.id === "c") as HeadingBlock;
+    expect(c.text).toBe("Integration of Function and Esthetics");
+    expect(c.byline).toBe("Jeffrey McClendon, Jonathan B. Levine");
+    expect(out.map((b) => b.id)).toEqual(["c", "p"]);
+  });
+});
