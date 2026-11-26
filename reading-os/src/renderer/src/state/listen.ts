@@ -13,6 +13,7 @@ import { useReader } from "./reader";
 import { platform } from "../platform";
 import type { VoiceStatus } from "../../../shared/ipc";
 import { clauses, spoken } from "../../../shared/speech";
+import type { BookUnits } from "../../../shared/units";
 
 /** The natural voices offered, best first (Kokoro v1.0 English voices). */
 export const NATURAL_VOICES = [
@@ -90,9 +91,15 @@ function linesOf(b: Block, text: string): Line[] {
   return out;
 }
 
-function queueFrom(book: BookDoc, texts: string[], start: number): Line[] {
+function queueFrom(book: BookDoc, texts: string[], start: number, units?: BookUnits): Line[] {
   const out: Line[] = [];
-  for (let i = start; i < book.blocks.length && out.length < 4000; i++) out.push(...linesOf(book.blocks[i], texts[i]));
+  // The folded front and back matter aren't read aloud — unless reading starts inside them.
+  const startUnit = units?.unitOf[start];
+  for (let i = start; i < book.blocks.length && out.length < 4000; i++) {
+    const k = units?.unitOf[i];
+    if (units && k !== undefined && k !== startUnit && units.units[k]?.kind !== "read") continue;
+    out.push(...linesOf(book.blocks[i], texts[i]));
+  }
   return out;
 }
 
@@ -123,7 +130,7 @@ export const useListen = create<ListenStore>((set, get) => ({
       return;
     }
     const from = ix.byId.get(fromBlockId ?? currentBlock ?? "") ?? 0;
-    const queue = queueFrom(book, ix.texts, from);
+    const queue = queueFrom(book, ix.texts, from, ix.units);
     player.reset();
     // Before the voices are downloaded the bar offers the download; reading starts when it's done.
     const go = ready(get().natural) && queue.length > 0;

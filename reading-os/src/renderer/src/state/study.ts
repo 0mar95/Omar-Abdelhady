@@ -278,16 +278,17 @@ export function sectionOf(book: BookDoc, ix: BookIndex, headingId: string): Sect
     if (b.kind === "paragraph" || b.kind === "list" || b.kind === "callout" || b.kind === "box" || (b.kind === "heading" && b.level > level)) parts.push(ix.texts[i]);
   }
   const ch = book.chapters[head.chapter];
-  return { title: head.kind === "heading" ? head.text : "", chapter: ch?.title ?? "", text: parts.join("\n\n"), start, end };
+  const unit = ix.units.units.find((u) => u.start === start);
+  return { title: unit?.title ?? (head.kind === "heading" ? head.text : ""), chapter: unit?.chapterTitle ?? ch?.title ?? "", text: parts.join("\n\n"), start, end };
 }
 
 /** For short sections grouped under one quiz: the group's first heading → where the group ends. */
 const groups = new WeakMap<BookDoc, Map<string, number>>();
 
 /**
- * Where quizzes go: one at the end of each chapter, covering the whole
- * chapter (after its last passage, before its reference list). A book with
- * no chapters gets one at its end.
+ * Where quizzes go: one at the end of each of Kenning's chapters (reading
+ * units), covering all of it, after its last passage and before its reference
+ * list. The folded front and back matter get none.
  * Returns: id of the last block covered → id of the block the quiz starts at.
  */
 export function quizSections(book: BookDoc, ix: BookIndex): Map<string, string> {
@@ -297,20 +298,14 @@ export function quizSections(book: BookDoc, ix: BookIndex): Map<string, string> 
     const b = book.blocks[k];
     return b.kind === "paragraph" || b.kind === "list" || b.kind === "callout" || b.kind === "box";
   };
-  const words = (a: number, z: number) => {
-    let n = 0;
-    for (let k = a; k < z; k++) if (readable(k)) n += (ix.texts[k].match(/\S+/g) ?? []).length;
-    return n;
-  };
-  const chapters = book.chapters.filter((c) => book.blocks[c.start]?.kind === "heading" && c.title !== "Front matter");
-  const spans = chapters.length ? chapters.map((c) => [c.start, c.end] as const) : [[0, book.blocks.length] as const];
-  for (const [start, end] of spans) {
-    if (words(start, end) < 150) continue;
-    // After the chapter's last passage: its references and index come after the quiz.
-    let last = end - 1;
-    while (last > start && !readable(last)) last--;
-    out.set(book.blocks[last].id, book.blocks[start].id);
-    ends.set(book.blocks[start].id, end);
+  for (const u of ix.units.units) {
+    if (u.kind !== "read") continue;
+    const words = (u.end < book.blocks.length ? ix.wordsBefore[u.end] : ix.totalWords) - ix.wordsBefore[u.start];
+    if (words < 150) continue;
+    let last = u.end - 1;
+    while (last > u.start && !readable(last)) last--;
+    out.set(book.blocks[last].id, book.blocks[u.start].id);
+    ends.set(book.blocks[u.start].id, u.end);
   }
   groups.set(book, ends);
   return out;

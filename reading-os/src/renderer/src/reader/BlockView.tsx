@@ -3,6 +3,7 @@
 // clicks for all of them with a few delegated listeners.
 
 import { Title } from "../ui/Title";
+import type { ReadingUnit } from "../../../shared/units";
 import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 import { create } from "zustand";
 import type { AboutBlock, Block, BoxBlock, HeadingBlock, FigureBlock, Span, TableBlock, TitlePageBlock } from "../../../shared/model";
@@ -14,7 +15,7 @@ import type { TermMatch } from "../../../shared/glossary/extract";
 import { imageUrl } from "../formats";
 import { renderRegion } from "../pdf";
 import { useGlossary } from "../state/glossary";
-import { useReader } from "../state/reader";
+import { unitLabel, useReader } from "../state/reader";
 import { useSettings } from "../state/settings";
 import { IconBulb, IconImage, IconSparkle } from "../ui/icons";
 
@@ -400,32 +401,60 @@ export function TitlePage({ b }: { b: Pick<TitlePageBlock, "title" | "subtitle" 
   );
 }
 
-/** For books without a contents page of their own: the chapters, one click away. */
-/** Kenning's own contents: chapters and their sections, with reading times, no page numbers. */
+/**
+ * Kenning's own contents: its chapters (reading units) with reading times —
+ * the book's chapters, split when long — and their sections. Front and back
+ * matter are one line each.
+ */
 export function ChapterList() {
   const book = useReader((s) => s.book)!;
   const ix = useReader((s) => s.ix)!;
-  const outline = outlineOf(book, ix);
-  const chapters = book.chapters.filter((c) => c.title !== "Front matter" && book.blocks[c.start]?.kind === "heading");
-  if (chapters.length < 2) return null;
+  const { units } = ix.units;
+  const reads = units.filter((u) => u.kind === "read");
+  if (reads.length < 2) return null;
   const go = (id: string) => useReader.getState().jumpTo({ blockId: id });
+  // Parts of one chapter are listed together under it.
+  const groups: ReadingUnit[][] = [];
+  for (const u of reads) {
+    const last = groups[groups.length - 1];
+    if (u.part && u.part.index > 1 && last) last.push(u);
+    else groups.push([u]);
+  }
+  const sectionsOf = (u: ReadingUnit) =>
+    book.toc.filter((t) => t.level === 2 && (ix.byId.get(t.blockId) ?? -1) > u.start && (ix.byId.get(t.blockId) ?? -1) < u.end);
+  const front = units.find((u) => u.kind === "front");
+  const back = units.find((u) => u.kind === "back");
   return (
     <nav aria-label="Contents" className="book-contents mb-16 font-ui">
       <h2 className="!mt-0">Contents</h2>
+      {front && <p className="around">Before the book · folded away</p>}
       <ol>
-        {chapters.map((c, i) => {
-          const head = book.blocks[c.start];
-          const o = outline.byHeading.get(head.id);
-          const sections = book.toc.filter((t) => t.level === 2 && (ix.byId.get(t.blockId) ?? -1) > c.start && (ix.byId.get(t.blockId) ?? -1) < c.end);
+        {groups.map((g) => {
+          const first = g[0];
+          const total = g.reduce((n, u) => n + u.minutes, 0);
+          const sections = g.length === 1 ? sectionsOf(first) : [];
           return (
-            <li key={i}>
-              <button type="button" className="chapter-row" onClick={() => go(head.id)}>
-                <span className="num">{c.number}</span>
+            <li key={first.id}>
+              <button type="button" className="chapter-row" onClick={() => go(first.id)}>
+                <span className="num">{first.number ?? unitLabel(ix.units, first)}</span>
                 <span className="title">
-                  <Title text={c.title} />
+                  <Title text={first.chapterTitle ?? first.title} />
                 </span>
-                {o && <span className="time">{o.minutes} min</span>}
+                <span className="time">{total} min</span>
               </button>
+              {g.length > 1 && (
+                <ol className="parts">
+                  {g.map((u) => (
+                    <li key={u.id}>
+                      <button type="button" onClick={() => go(u.id)}>
+                        <span className="part">Part {u.part?.index}</span>
+                        <Title text={u.part?.index === 1 ? (sectionsOf(u)[0]?.title ?? u.title) : u.title} />
+                        <span className="time">{u.minutes} min</span>
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+              )}
               {sections.length > 0 && sections.length <= 40 && (
                 <ol className="sections">
                   {sections.map((t) => (
@@ -441,6 +470,7 @@ export function ChapterList() {
           );
         })}
       </ol>
+      {back && <p className="around">After the book · {back.title === "After the book" ? "references and back pages, folded away" : back.title}</p>}
     </nav>
   );
 }
@@ -474,6 +504,9 @@ function ChapterOpener({ b }: { b: HeadingBlock }) {
   const book = useReader((s) => s.book)!;
   const ix = useReader((s) => s.ix)!;
   const o = outlineOf(book, ix).byHeading.get(b.id);
+  // Kenning reads a long chapter in parts: this opener starts the first.
+  const unit = ix.units.units.find((u) => u.id === b.id);
+  const part = unit?.part;
   return (
     <header className="chapter-opener">
       {b.number && <div className="num">{b.number}</div>}
@@ -483,8 +516,8 @@ function ChapterOpener({ b }: { b: HeadingBlock }) {
       {o?.authors && <p className="authors">{o.authors}</p>}
       {o && (
         <p className="meta">
-          {formatMinutes(o.minutes)}
-          {o.sections.length > 0 && ` · ${o.sections.length} sections`}
+          {part ? `Part 1 of ${part.of} · ${formatMinutes(unit!.minutes)} · ${formatMinutes(o.minutes).replace(" read", "")} in all` : formatMinutes(o.minutes)}
+          {!part && o.sections.length > 0 && ` · ${o.sections.length} sections`}
         </p>
       )}
       {o?.keyPoints && (

@@ -39,7 +39,8 @@ export function SectionQuiz({ headingId }: { headingId: string }) {
   const [open, setOpen] = useState(false);
   const questions = useMemo(() => all.filter((q) => q.sectionId === headingId), [all, headingId]);
   const title = book.blocks[ix.byId.get(headingId) ?? 0];
-  const name = title?.kind === "heading" ? title.text : "this section";
+  const unit = ix.units.units.find((u) => u.id === headingId);
+  const name = unit?.title ?? (title?.kind === "heading" ? title.text : "this section");
   const working = busy === headingId;
 
   if (!open && !questions.length)

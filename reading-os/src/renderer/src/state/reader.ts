@@ -1,3 +1,4 @@
+import { readingUnits, type BookUnits, type ReadingUnit } from "../../../shared/units";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { create } from "zustand";
 import type { OpenedFile } from "../../../shared/ipc";
@@ -29,6 +30,8 @@ export interface BookIndex {
   /** First block on or after each page. */
   pageFirstBlock: number[];
   texts: string[];
+  /** Kenning's own chapters for this book (see shared/units). */
+  units: BookUnits;
 }
 
 export function indexBook(book: BookDoc): BookIndex {
@@ -56,7 +59,16 @@ export function indexBook(book: BookDoc): BookIndex {
     if (pageFirstBlock[p] === -1) pageFirstBlock[p] = next;
     else next = pageFirstBlock[p];
   }
-  return { byId, wordsBefore, totalWords: words, byKey, pageFirstBlock, texts };
+  return { byId, wordsBefore, totalWords: words, byKey, pageFirstBlock, texts, units: readingUnits(book, wordsBefore, words) };
+}
+
+/**
+ * How a unit is numbered: the book's chapter number ("6", or "6.2" for the second
+ * part of chapter 6), or its place among the reading units when the book has none.
+ */
+export function unitLabel(all: BookUnits, u: ReadingUnit): string {
+  if (u.number) return u.part ? `${u.number}, part ${u.part.index}` : u.number;
+  return String(all.units.filter((x) => x.kind === "read").indexOf(u) + 1);
 }
 
 /** "page 36" for books with printed pages; empty for EPUBs and documents, which have none. */
@@ -253,13 +265,14 @@ const WPM = 230;
 /** Chapter, time left in it and printed page at a block, for the library's "Continue reading". */
 export function whereAt(book: BookDoc, ix: BookIndex, i: number): { chapterTitle?: string; chapterNumber?: string; minutesLeft: number; pageLabel?: string } {
   const b = book.blocks[i];
-  const ch = book.chapters[b?.chapter ?? 0];
-  const end = Math.min(ch?.end ?? book.blocks.length, book.blocks.length);
+  // Kenning's own chapter (unit) at this point of the book.
+  const u = ix.units.units[ix.units.unitOf[Math.max(0, Math.min(i, book.blocks.length - 1))] ?? 0];
+  const end = Math.min(u?.end ?? book.blocks.length, book.blocks.length);
   const left = (end < book.blocks.length ? ix.wordsBefore[end] : ix.totalWords) - ix.wordsBefore[i];
-  const sameAsBook = ch?.title?.trim().toLowerCase() === book.title.trim().toLowerCase();
+  const sameAsBook = u?.title?.trim().toLowerCase() === book.title.trim().toLowerCase();
   return {
-    chapterTitle: ch && !sameAsBook && ch.title !== "Front matter" ? ch.title : undefined,
-    chapterNumber: ch?.number,
+    chapterTitle: u && u.kind === "read" && !sameAsBook ? u.title : undefined,
+    chapterNumber: u?.kind === "read" ? unitLabel(ix.units, u) : undefined,
     minutesLeft: Math.max(0, Math.round(left / WPM)),
     pageLabel: b ? book.pages[b.page]?.label || undefined : undefined,
   };

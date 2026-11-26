@@ -1,3 +1,4 @@
+import { unitLabel } from "../state/reader";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useCards } from "../ai";
 import { CommandPalette } from "../command/CommandPalette";
@@ -131,13 +132,15 @@ export function Reader({ onOpenFile, onLibrary }: { onOpenFile(): void; onLibrar
         e.preventDefault();
         openRecap();
       } else if (e.key === "]" || e.key === "[") {
+        // Kenning's chapters: "]" to the next one, "[" to the start of this one (or the previous).
         const cur = ix.byId.get(useReader.getState().currentBlock ?? "") ?? 0;
-        const ch = book.blocks[cur]?.chapter ?? 0;
-        // "[" goes to the start of this chapter, or the previous one if already there.
-        const next = e.key === "]" ? ch + 1 : cur > book.chapters[ch].start + 1 ? ch : ch - 1;
-        const target = book.chapters[Math.max(0, Math.min(book.chapters.length - 1, next))];
-        const b = target && book.blocks[target.start];
-        if (b) jumpTo({ blockId: b.id });
+        const { units, unitOf } = ix.units;
+        const k = unitOf[cur] ?? 0;
+        let next = e.key === "]" ? k + 1 : cur > (units[k]?.start ?? 0) + 1 ? k : k - 1;
+        // The folded front and back matter are skipped.
+        while (units[next] && units[next].kind !== "read" && next > 0 && next < units.length - 1) next += e.key === "]" ? 1 : -1;
+        const target = units[Math.max(0, Math.min(units.length - 1, next))];
+        if (target) jumpTo({ blockId: target.id });
       }
     };
     window.addEventListener("keydown", onKey);
@@ -242,7 +245,9 @@ function useProgress() {
   return useMemo(() => {
     const i = currentBlock ? ix.byId.get(currentBlock) ?? 0 : 0;
     const b = book.blocks[i];
-    const ch = book.chapters[b?.chapter ?? 0];
+    // Kenning's chapter (reading unit) here; the folded front and back matter have none.
+    const unit = ix.units.units[ix.units.unitOf[i] ?? 0];
+    const ch = unit && unit.kind === "read" ? { title: unit.title, number: unitLabel(ix.units, unit), start: unit.start, end: unit.end } : undefined;
     const chEnd = Math.min(ch?.end ?? book.blocks.length, book.blocks.length);
     const chWordsEnd = chEnd < book.blocks.length ? ix.wordsBefore[chEnd] : ix.totalWords;
     const wordsLeft = chWordsEnd - ix.wordsBefore[i];
@@ -268,7 +273,7 @@ function ReaderTitle() {
       {chapter?.title && !same && (
         <span className="text-ink-3">
           {" "}
-          · {chapter.number ? `${chapter.number}. ` : ""}
+          · {chapter.number ? `${chapter.number} · ` : ""}
           {chapter.title}
         </span>
       )}

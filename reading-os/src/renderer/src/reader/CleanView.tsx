@@ -9,7 +9,8 @@ import { paintHighlights, useHighlights, type Highlight } from "../state/highlig
 import { useNotes } from "../state/notes";
 import { quizSections, useStudy } from "../state/study";
 import { SectionQuiz } from "./Study";
-import { useReader } from "../state/reader";
+import { unitLabel, useReader } from "../state/reader";
+import type { ReadingUnit } from "../../../shared/units";
 import { FONTS, useSettings } from "../state/settings";
 import { BlockView, ChapterList, TitlePage } from "./BlockView";
 import { InlineCard } from "./InlineCard";
@@ -120,6 +121,9 @@ export const CleanView = memo(function CleanView({ scrollRef }: { scrollRef: Rea
   useEffect(() => {
     if (!jump?.blockId) return;
     const el = scrollRef.current?.querySelector<HTMLElement>(`[data-block="${jump.blockId}"]`);
+    // Inside the folded front or back matter: unfold it first.
+    const fold = el?.closest("details");
+    if (fold && !fold.open) fold.open = true;
     if (!el) return;
     const go = () => el.scrollIntoView({ block: "start" });
     go();
@@ -181,35 +185,57 @@ export const CleanView = memo(function CleanView({ scrollRef }: { scrollRef: Rea
     <div className="reader px-6 pb-[40vh] pt-20 sm:px-12" style={style}>
       <article ref={articleRef} className={`book ${settings.indent ? "indented" : ""} ${gutter ? "with-gutter" : ""} ${settings.focus ? "focus" : ""}`} lang="en">
         {opening.synth && <TitlePage b={{ title: "", details: [] }} />}
-        {opening.listAtTop && <ChapterList />}
-        {book.blocks.map((b, i) => {
-          if (b.id === opening.skip || b.id === opening.cover || pulled.has(b.id)) return null;
-          const attached = cardsByBlock.get(b.id);
-          const note = settings.marginNotes && b.kind === "heading" ? notes.get(b.id) : undefined;
-          const isWorking = settings.marginNotes && working === b.id;
-          const block = (
-            <BlockWithCards
-              key={b.id}
-              block={b}
-              flow={flows[i]}
-              cards={attached}
-              onRegenerate={regenerate}
-              note={note}
-              working={isWorking}
-              gutter={gutter}
-              marks={marksByBlock.get(b.id)}
-              quiz={quizAfter.get(b.id)}
-            />
-          );
-          return b.id === opening.afterId && opening.list ? (
-            <Fragment key={b.id}>
-              {block}
-              <ChapterList />
+        {ix.units.units.map((u) => {
+          // One block of the book, as it's always been drawn.
+          const one = (b: (typeof book.blocks)[number], i: number) => {
+            if (b.id === opening.skip || b.id === opening.cover || pulled.has(b.id)) return null;
+            const block = (
+              <BlockWithCards
+                key={b.id}
+                block={b}
+                flow={flows[i]}
+                cards={cardsByBlock.get(b.id)}
+                onRegenerate={regenerate}
+                note={settings.marginNotes && b.kind === "heading" ? notes.get(b.id) : undefined}
+                working={settings.marginNotes && working === b.id}
+                gutter={gutter}
+                marks={marksByBlock.get(b.id)}
+                quiz={quizAfter.get(b.id)}
+              />
+            );
+            // A part of a longer chapter (or a unit Kenning cut) opens with a small heading of its own.
+            const startsUnit = u.kind === "read" && b.id === u.id && !(b.kind === "heading" && b.level === 1);
+            if (!startsUnit) return block;
+            return (
+              <Fragment key={b.id}>
+                <UnitStart unit={u} />
+                {block}
+              </Fragment>
+            );
+          };
+          const range = book.blocks.slice(u.start, u.end);
+          if (u.kind === "read") return <Fragment key={u.id}>{range.map((b, k) => one(b, u.start + k))}</Fragment>;
+          // Before and after the book: the title page and contents stay in view; the rest folds away.
+          const shown: Block[] = u.kind === "front" ? range.filter((b) => b.kind === "titlepage") : [];
+          const folded = range.filter((b) => !shown.includes(b));
+          const visible = folded.filter((b) => b.id !== opening.skip && b.id !== opening.cover && !pulled.has(b.id));
+          return (
+            <Fragment key={u.id}>
+              {shown.map((b) => one(b, u.start + range.indexOf(b)))}
+              {u.kind === "front" && opening.list && <ChapterList />}
+              {visible.length > 0 && (
+                <details className="around-book blk">
+                  <summary>
+                    <span className="label">{u.kind === "front" ? "Before the book" : "After the book"}</span>
+                    <span className="what">{aroundSummary(book, u.start, u.end)}</span>
+                  </summary>
+                  {folded.map((b) => one(b, u.start + range.indexOf(b)))}
+                </details>
+              )}
             </Fragment>
-          ) : (
-            block
           );
         })}
+        {!ix.units.units.some((u) => u.kind === "front") && opening.list && <ChapterList />}
         <div className="blk mt-24 text-center font-ui text-sm text-ink-3">End of book</div>
       </article>
       <FigureDock scrollRef={scrollRef} articleRef={articleRef} />
@@ -280,4 +306,40 @@ function highlightIn(el: HTMLElement, query: string) {
   }
   registry.set("search-hit", new HighlightCtor(...ranges));
   setTimeout(() => registry.delete("search-hit"), 4000);
+}
+
+/** What a folded part holds, in a few words: "Preface, Foreword, Contributors". */
+function aroundSummary(book: { blocks: Block[] }, a: number, z: number): string {
+  const names: string[] = [];
+  for (let i = a; i < z && names.length < 5; i++) {
+    const b = book.blocks[i];
+    const name =
+      b.kind === "heading" && b.level <= 2
+        ? b.text
+        : b.kind === "about"
+          ? "About this book"
+          : b.kind === "references"
+            ? "References"
+            : b.kind === "index"
+              ? "Index"
+              : b.kind === "contents"
+                ? "Printed contents"
+                : null;
+    if (name && !names.some((n) => n.toLowerCase() === name.toLowerCase())) names.push(name);
+  }
+  return names.length ? names.join(" · ") : "The pages around the reading";
+}
+
+/** The start of one of Kenning's chapters that doesn't open with the book's own chapter page. */
+function UnitStart({ unit }: { unit: ReadingUnit }) {
+  const ix = useReader((s) => s.ix)!;
+  return (
+    <div className="unit-start blk font-ui" aria-label={`Chapter ${unitLabel(ix.units, unit)}`}>
+      <span className="num">{unit.number ?? unitLabel(ix.units, unit)}</span>
+      <span className="meta">
+        {unit.part ? `Part ${unit.part.index} of ${unit.part.of}${unit.chapterTitle ? ` · ${unit.chapterTitle}` : ""}` : "Reading"}
+        {` · ${unit.minutes} min`}
+      </span>
+    </div>
+  );
 }
