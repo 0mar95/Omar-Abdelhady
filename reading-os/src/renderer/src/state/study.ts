@@ -1,32 +1,52 @@
-// Study mode: questions written from a section's own text, answered in the
-// page, with the ones you miss coming back later (a simple spaced schedule).
-// Questions come from the local model; without it, fill-in-the-blank
-// questions are made from the terms the book itself sets in bold.
+// Study mode: questions from a section's own text, answered in the page, and
+// a daily review across every book scheduled with FSRS (the algorithm modern
+// Anki uses: each card comes back just before you'd forget it).
+//
+// Questions come from two places. The local model writes them, and each one
+// is checked against the book: its supporting quote must really be in the
+// section, the answer must be in that quote, and a second pass confirms the
+// marked answer is the only right one. The book's own material (definitions,
+// acronyms, key terms, numbers, tables) fills in, and is all there is when
+// the model isn't running.
 
 import { create } from "zustand";
 import type { ChatMessage } from "../../../shared/ipc";
 import type { BookDoc } from "../../../shared/model";
+import { extractGlossary } from "../../../shared/glossary/extract";
+import { fromLegacy, review, type Card, type Grade } from "../../../shared/study/fsrs";
+import { answerInQuote, bookQuestions, findQuote, type Draft, type QuestionKind } from "../../../shared/study/questions";
 import { streamChat } from "../ai";
 import { platform } from "../platform";
+import { useGlossary } from "./glossary";
 import type { BookIndex } from "./reader";
+
+export type { Card, Grade };
 
 export interface Question {
   id: string;
   /** The heading that opens the section the question comes from. */
   sectionId: string;
   section: string;
+  kind?: QuestionKind;
   q: string;
   type: "mcq" | "short";
   options?: string[];
   /** For mcq: index of the right option. For short: the model answer. */
   answer: number | string;
+  /** The book's sentence the answer rests on. */
   why?: string;
+  /** Where that sentence is. */
+  blockId?: string;
+  /** Written by the model (checked) or made from the book itself. */
+  from?: "ai" | "book";
 }
 
-export interface Review {
-  /** Next time the question is due (ms). */
+interface Saved {
+  questions: Question[];
+  reviews: Record<string, Card | LegacyReview>;
+}
+interface LegacyReview {
   due: number;
-  /** Days until the next review after a right answer. */
   interval: number;
   right: number;
   wrong: number;
@@ -36,54 +56,80 @@ export interface Review {
 interface StudyStore {
   bookId: string | null;
   questions: Question[];
-  reviews: Record<string, Review>;
+  reviews: Record<string, Card>;
   busy: string | null;
+  /** What the busy section is doing, for the hint line. */
+  stage: string | null;
   error: string | null;
   load(bookId: string): Promise<void>;
   generate(book: BookDoc, ix: BookIndex, sectionId: string): Promise<void>;
-  grade(id: string, right: boolean): void;
+  /**
+   * Records an answer, scheduled from `before` (the card as it was before this
+   * answer, so a change of mind — Good to Easy — is graded from the same start).
+   * `first` counts it toward the day's streak.
+   */
+  grade(id: string, grade: Grade, before: Card | undefined, first: boolean): Card;
   dueCount(): number;
   due(): Question[];
 }
 
-const DAY = 86_400_000;
+const ready = (r: Card | LegacyReview): Card => ("s" in r ? r : fromLegacy(r));
+
+/** Placeholder options from older versions ("The opposite of that"): such questions are dropped. */
+const FILLER = /^(the opposite of that|nothing about it|something (else|unrelated)|neither|both|all of the above|none of the above)$/i;
+const sound = (qs: Question[] | undefined) => (qs ?? []).filter((q) => (q.options ?? []).filter((o) => FILLER.test(o.trim())).length < 2);
 
 export const useStudy = create<StudyStore>((set, get) => ({
   bookId: null,
   questions: [],
   reviews: {},
   busy: null,
+  stage: null,
   error: null,
   async load(bookId) {
     set({ bookId, questions: [], reviews: {}, error: null });
-    const saved = await platform.stateGet<{ questions: Question[]; reviews: Record<string, Review> }>(`study:${bookId}`);
-    if (saved && get().bookId === bookId) set({ questions: saved.questions ?? [], reviews: saved.reviews ?? {} });
+    const saved = await platform.stateGet<Saved>(`study:${bookId}`);
+    if (saved && get().bookId === bookId) set({ questions: sound(saved.questions), reviews: upgrade(saved.reviews) });
   },
   async generate(book, ix, sectionId) {
     if (get().busy) return;
-    set({ busy: sectionId, error: null });
+    set({ busy: sectionId, stage: "Writing questions from this section…", error: null });
     try {
       const sec = sectionOf(book, ix, sectionId);
-      let made = await fromModel(sec).catch(() => [] as Omit<Question, "id" | "sectionId" | "section">[]);
-      if (made.length < 2) made = [...made, ...cloze(book, ix, sec)].slice(0, 5);
-      if (!made.length) throw new Error("This section is too short to ask about.");
-      const qs: Question[] = made.map((m, i) => ({ ...m, id: `${sectionId}:${Date.now().toString(36)}:${i}`, sectionId, section: sec.title }));
+      const blocks: { id: string; text: string }[] = [];
+      for (let i = sec.start; i < sec.end; i++) blocks.push({ id: book.blocks[i].id, text: ix.texts[i] });
+      const terms = useGlossary.getState().bookId === book.id && useGlossary.getState().terms.length ? useGlossary.getState().terms : extractGlossary(book);
+      const own = bookQuestions(book, ix.texts, { start: sec.start, end: sec.end }, terms).map((d) => ({ ...d, from: "book" as const }));
+      let ai: (Draft & { from: "ai" })[] = [];
+      try {
+        const drafts = await fromModel(sec);
+        const grounded = ground(drafts, blocks, sec.text);
+        if (grounded.length) {
+          set({ stage: "Checking the answers against the book…" });
+          ai = (await confirm(sec, grounded)).map((d) => ({ ...d, from: "ai" as const }));
+        }
+      } catch {
+        /* the model isn't running: the book's own questions are used */
+      }
+      // The model's checked questions first, then the book's own, five in all.
+      const made = [...ai, ...own.filter((o) => !ai.some((a) => a.blockId === o.blockId && a.kind === o.kind))].slice(0, 5);
+      if (!made.length) throw new Error("There isn't enough in this section to ask about yet.");
+      const stamp = Date.now().toString(36);
+      const qs: Question[] = made.map((m, i) => ({ ...m, id: `${sectionId}:${stamp}:${i}`, sectionId, section: sec.title }));
       set((s) => ({ questions: [...s.questions.filter((q) => q.sectionId !== sectionId), ...qs] }));
       save(get());
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
     } finally {
-      set({ busy: null });
+      set({ busy: null, stage: null });
     }
   },
-  grade(id, right) {
-    const prev = get().reviews[id] ?? { due: 0, interval: 0, right: 0, wrong: 0 };
-    const now = Date.now();
-    // Right: wait longer each time (1, 3, 8, 20… days). Wrong: back tomorrow, from the start.
-    const interval = right ? Math.max(1, Math.round((prev.interval || 0.4) * 2.5)) : 1;
-    const next: Review = { due: now + interval * DAY, interval: right ? interval : 0, right: prev.right + (right ? 1 : 0), wrong: prev.wrong + (right ? 0 : 1), last: right ? "right" : "wrong" };
+  grade(id, g, before, first) {
+    const next = review(before, g);
     set((s) => ({ reviews: { ...s.reviews, [id]: next } }));
     save(get());
+    if (first) logAnswer();
+    return next;
   },
   dueCount() {
     return get().due().length;
@@ -95,8 +141,86 @@ export const useStudy = create<StudyStore>((set, get) => ({
   },
 }));
 
+function upgrade(reviews: Record<string, Card | LegacyReview> | undefined): Record<string, Card> {
+  const out: Record<string, Card> = {};
+  for (const [k, r] of Object.entries(reviews ?? {})) out[k] = ready(r);
+  return out;
+}
+
 function save(s: StudyStore) {
   if (s.bookId) void platform.stateSet(`study:${s.bookId}`, { questions: s.questions, reviews: s.reviews });
+}
+
+// ---------- the daily review, across every book ----------
+
+export interface DueItem {
+  bookId: string;
+  bookTitle: string;
+  q: Question;
+  card: Card;
+}
+
+/** Everything due now in these books, the most overdue first. */
+export async function dueAcross(books: { id: string; title: string }[]): Promise<DueItem[]> {
+  const now = Date.now();
+  const out: DueItem[] = [];
+  for (const b of books) {
+    const cur = useStudy.getState();
+    const saved = cur.bookId === b.id ? { questions: cur.questions, reviews: cur.reviews } : await platform.stateGet<Saved>(`study:${b.id}`);
+    if (!saved) continue;
+    const reviews = upgrade(saved.reviews);
+    for (const q of sound(saved.questions)) {
+      const card = reviews[q.id];
+      if (card && card.due <= now) out.push({ bookId: b.id, bookTitle: b.title, q, card });
+    }
+  }
+  return out.sort((a, b) => a.card.due - b.card.due);
+}
+
+/** Grades a question of any book (the open one or one on the shelf). */
+export function gradeIn(bookId: string, id: string, g: Grade, before: Card | undefined, first: boolean): Card {
+  const cur = useStudy.getState();
+  if (cur.bookId === bookId) return cur.grade(id, g, before, first);
+  const next = review(before, g);
+  // Saves are queued per book so quick answers don't overwrite each other.
+  pending = pending.then(async () => {
+    const saved = await platform.stateGet<Saved>(`study:${bookId}`);
+    if (saved) await platform.stateSet(`study:${bookId}`, { questions: saved.questions, reviews: { ...upgrade(saved.reviews), [id]: next } });
+  });
+  if (first) logAnswer();
+  return next;
+}
+let pending: Promise<void> = Promise.resolve();
+
+/** Answers per day, for the streak. */
+type Log = Record<string, number>;
+let log: Log | null = null;
+const today = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+async function readLog(): Promise<Log> {
+  log ??= (await platform.stateGet<Log>("study:log")) ?? {};
+  return log;
+}
+
+function logAnswer() {
+  void readLog().then((l) => {
+    l[today()] = (l[today()] ?? 0) + 1;
+    void platform.stateSet("study:log", l);
+  });
+}
+
+/** Days in a row with at least one answer, ending today (or yesterday, if today isn't done yet). */
+export async function streak(): Promise<{ days: number; today: number }> {
+  const l = await readLog();
+  const d = new Date();
+  const done = l[today(d)] ?? 0;
+  if (!done) d.setDate(d.getDate() - 1);
+  let n = 0;
+  while (l[today(d)]) {
+    n++;
+    d.setDate(d.getDate() - 1);
+  }
+  return { days: n, today: done };
 }
 
 interface Section {
@@ -180,15 +304,18 @@ export function quizSections(book: BookDoc, ix: BookIndex): Map<string, string> 
   }
 }
 
-const SYSTEM = `You write short self-test questions for a student reading a textbook.
+const SYSTEM = `You write self-test questions for a student reading a textbook (often dental or medical).
 Rules:
-- Use ONLY facts stated in the given section text. Never add outside knowledge.
-- Ask about the most important ideas: definitions, mechanisms, distinguishing features, numbers that matter clinically.
-- Mix 3 multiple-choice questions (4 options, one clearly right, plausible wrong ones from the same topic) and 1 or 2 short-answer questions.
-- Reply with JSON only, no prose, in exactly this shape:
-{"questions":[{"type":"mcq","q":"…","options":["…","…","…","…"],"answer":0,"why":"one sentence from the text"},{"type":"short","q":"…","answer":"…","why":"…"}]}`;
+- Use ONLY facts stated in the section text. Never add outside knowledge.
+- Ask about what matters: definitions, how things work, how similar things differ, numbers and thresholds that matter clinically.
+- Write 4 multiple-choice questions, each with 4 options: one clearly right, three plausible wrong ones from the same topic, similar in length. No "all of the above" or "none of the above".
+- Vary the kinds: "definition", "compare" (how two things differ), "number" (a value, dose, threshold or percentage), "concept" (why or how).
+- If the section describes diagnosis or treatment, make one of them a "case": a 1–2 sentence patient description, asking for the most likely diagnosis or the best next step, answerable from the text.
+- For every question give "quote": the sentence from the text, copied word for word, that proves the answer.
+- Reply with JSON only, in exactly this shape:
+{"questions":[{"kind":"definition","q":"…","options":["…","…","…","…"],"answer":0,"quote":"…"}]}`;
 
-async function fromModel(sec: Section): Promise<Omit<Question, "id" | "sectionId" | "section">[]> {
+async function fromModel(sec: Section): Promise<Draft[]> {
   const text = sec.text.length > 7000 ? `${sec.text.slice(0, 7000)}…` : sec.text;
   const messages: ChatMessage[] = [
     { role: "system", content: SYSTEM },
@@ -199,8 +326,68 @@ async function fromModel(sec: Section): Promise<Omit<Question, "id" | "sectionId
   return parseQuestions(out);
 }
 
+/** Keeps the model's questions whose quote is really in the section and whose answer is in that quote. */
+function ground(drafts: Draft[], blocks: { id: string; text: string }[], sectionText: string): Draft[] {
+  const out: Draft[] = [];
+  for (const d of drafts) {
+    const found = d.why ? findQuote(d.why, blocks) : null;
+    if (!found) continue;
+    const answer = d.type === "mcq" ? d.options![d.answer as number] : String(d.answer);
+    // Filler wrong options ("Something unrelated") make a question pointless: wrong
+    // options should come from the topic, sharing words with the section.
+    if (d.type === "mcq" && d.options!.filter((o, i) => i !== d.answer && offTopic(o, sectionText)).length >= 2) continue;
+    const source = blocks.find((b) => b.id === found.blockId)?.text ?? "";
+    // A patient case's answer (a diagnosis, a next step) need only be in the section.
+    if (!answerInQuote(answer, d.kind === "case" ? sectionText : `${found.sentence} ${source}`)) continue;
+    out.push({ ...d, why: found.sentence, blockId: found.blockId });
+  }
+  return out;
+}
+
+function offTopic(option: string, text: string): boolean {
+  if (/\d/.test(option)) return false;
+  const words = option.toLowerCase().match(/\p{L}{4,}/gu) ?? [];
+  const hay = text.toLowerCase();
+  return !words.some((w) => hay.includes(w.slice(0, Math.max(4, w.length - 2))));
+}
+
+const CHECK = `You check self-test questions against a textbook section.
+For each question, answer ok=true only if the section text clearly supports the marked answer AND none of the other options is also correct according to the text.
+Reply with JSON only: {"verdicts":[{"n":1,"ok":true}]}`;
+
+/** A second pass: the model confirms each marked answer is right and the only right one. */
+async function confirm(sec: Section, drafts: Draft[]): Promise<Draft[]> {
+  const text = sec.text.length > 7000 ? `${sec.text.slice(0, 7000)}…` : sec.text;
+  const list = drafts
+    .map((d, i) => `${i + 1}. ${d.q}\n${(d.options ?? []).map((o, k) => `   ${String.fromCharCode(65 + k)}) ${o}${k === d.answer ? "   ← marked answer" : ""}`).join("\n")}`)
+    .join("\n\n");
+  let out = "";
+  try {
+    await streamChat(
+      [
+        { role: "system", content: CHECK },
+        { role: "user", content: `Section text:\n"""${text}"""\n\nQuestions:\n${list}\n\nReply with the JSON verdicts.` },
+      ],
+      (t) => (out += t),
+    ).done;
+  } catch {
+    return drafts;
+  }
+  const cleaned = out.replace(/<think>[\s\S]*?<\/think>/g, "").replace(/```(?:json)?/g, "");
+  try {
+    const data = JSON.parse(cleaned.slice(cleaned.indexOf("{"), cleaned.lastIndexOf("}") + 1)) as { verdicts?: { n: number; ok: boolean }[] };
+    const bad = new Set((data.verdicts ?? []).filter((v) => v.ok === false).map((v) => v.n - 1));
+    return drafts.filter((_, i) => !bad.has(i));
+  } catch {
+    // An unreadable check keeps the grounded questions.
+    return drafts;
+  }
+}
+
+const KINDS = new Set<QuestionKind>(["definition", "acronym", "term", "number", "table", "concept", "case"]);
+
 /** Pulls the questions out of a model reply, tolerating extra text, code fences and small slips. */
-export function parseQuestions(reply: string): Omit<Question, "id" | "sectionId" | "section">[] {
+export function parseQuestions(reply: string): Draft[] {
   const cleaned = reply.replace(/<think>[\s\S]*?<\/think>/g, "").replace(/```(?:json)?/g, "");
   const start = cleaned.indexOf("{");
   const end = cleaned.lastIndexOf("}");
@@ -212,38 +399,24 @@ export function parseQuestions(reply: string): Omit<Question, "id" | "sectionId"
     return [];
   }
   const list = (data as { questions?: unknown[] }).questions ?? [];
-  const out: Omit<Question, "id" | "sectionId" | "section">[] = [];
+  const out: Draft[] = [];
   for (const raw of list) {
     const q = raw as Record<string, unknown>;
     const text = typeof q.q === "string" ? q.q.trim() : "";
     if (!text) continue;
-    const why = typeof q.why === "string" ? q.why.trim() : undefined;
-    if (Array.isArray(q.options) && q.options.length >= 2) {
-      const options = q.options.map((o) => String(o).trim()).filter(Boolean).slice(0, 5);
-      const answer = typeof q.answer === "number" ? q.answer : options.findIndex((o) => o === String(q.answer).trim());
-      if (answer >= 0 && answer < options.length) out.push({ type: "mcq", q: text, options, answer, why });
+    const why = typeof q.quote === "string" ? q.quote.trim() : typeof q.why === "string" ? q.why.trim() : undefined;
+    const kindRaw = typeof q.kind === "string" ? q.kind.toLowerCase() : "concept";
+    const kind = (kindRaw === "compare" ? "concept" : KINDS.has(kindRaw as QuestionKind) ? kindRaw : "concept") as QuestionKind;
+    if (Array.isArray(q.options) && q.options.length >= 3) {
+      const options = q.options.map((o) => String(o).trim().replace(/^[A-D][).:]\s+/, "")).filter(Boolean).slice(0, 5);
+      if (new Set(options.map((o) => o.toLowerCase())).size !== options.length) continue;
+      if (options.some((o) => /^(all|none) of the above/i.test(o))) continue;
+      const answer =
+        typeof q.answer === "number" ? q.answer : /^[A-D]$/i.test(String(q.answer).trim()) ? String(q.answer).trim().toUpperCase().charCodeAt(0) - 65 : options.findIndex((o) => o === String(q.answer).trim());
+      if (answer >= 0 && answer < options.length) out.push({ kind, type: "mcq", q: text, options, answer, why });
     } else if (typeof q.answer === "string" && q.answer.trim()) {
-      out.push({ type: "short", q: text, answer: q.answer.trim(), why });
+      out.push({ kind, type: "short", q: text, answer: q.answer.trim(), why });
     }
   }
   return out.slice(0, 6);
-}
-
-/** Offline questions: a sentence that sets a term in bold, with the term blanked out. */
-function cloze(book: BookDoc, ix: BookIndex, sec: Section): Omit<Question, "id" | "sectionId" | "section">[] {
-  const out: Omit<Question, "id" | "sectionId" | "section">[] = [];
-  const terms: string[] = [];
-  for (let i = sec.start + 1; i < sec.end && out.length < 4; i++) {
-    const b = book.blocks[i];
-    if (b.kind !== "paragraph") continue;
-    const bold = b.spans.filter((s) => s.b && s.text.trim().length > 3 && s.text.trim().split(" ").length <= 5).map((s) => s.text.trim());
-    terms.push(...bold);
-    for (const term of bold) {
-      const sentence = ix.texts[i].split(/(?<=[.!?])\s+/).find((s) => s.includes(term));
-      if (!sentence || sentence.length < 40 || sentence.length > 320) continue;
-      out.push({ type: "short", q: `Fill in the blank: ${sentence.replace(term, "_____")}`, answer: term, why: sentence });
-      break;
-    }
-  }
-  return out;
 }

@@ -8,6 +8,7 @@ import { useLibrary, type LibraryEntry } from "../state/library";
 import { useReader } from "../state/reader";
 import { useSettings } from "../state/settings";
 import { IconOpen, IconSearch, IconTrash } from "../ui/icons";
+import { ReviewPanel } from "./ReviewPanel";
 
 const isMac = navigator.platform.toLowerCase().includes("mac");
 
@@ -74,8 +75,9 @@ export function Library({ onOpenFile }: { onOpenFile(): void }) {
               {current && (
                 <section aria-label="Continue reading" className="mb-10 flex flex-wrap gap-6">
                   <ContinueCard e={current} onOpen={() => void openEntry(current)} />
-                  {also.length > 0 && (
-                    <div className="flex w-full flex-col gap-2.5 lg:w-[300px]">
+                  <div className="flex w-full flex-col gap-2.5 lg:w-[300px]">
+                    <ReviewPanel entries={entries} />
+                    {also.length > 0 && <>
                       <div className="px-1 pt-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-3">Also in progress</div>
                       {also.map((e) => (
                         <button
@@ -96,9 +98,14 @@ export function Library({ onOpenFile }: { onOpenFile(): void }) {
                           </span>
                         </button>
                       ))}
-                    </div>
-                  )}
+                    </>}
+                  </div>
                 </section>
+              )}
+              {!current && (
+                <div className="mb-10 max-w-[420px]">
+                  <ReviewPanel entries={entries} />
+                </div>
               )}
 
               <section aria-label="Your library">
@@ -243,7 +250,7 @@ function AiPill() {
 function ContinueCard({ e, onOpen }: { e: LibraryEntry; onOpen(): void }) {
   const chapter = e.chapterTitle ? `${e.chapterNumber ? `Chapter ${e.chapterNumber} · ` : ""}${e.chapterTitle}` : null;
   return (
-    <div className="flex min-w-[320px] flex-1 items-end gap-8 py-2">
+    <div className="flex min-w-[320px] flex-1 items-end gap-8 self-start py-2">
       <button type="button" onClick={onOpen} aria-label={`Open ${e.title}`} className="hidden shrink-0 sm:block">
         <Cover e={e} className="h-[214px] w-[150px] shadow-[inset_5px_0_0_rgb(0_0_0/0.22),0_18px_30px_rgb(60_40_20/0.25)]" />
       </button>

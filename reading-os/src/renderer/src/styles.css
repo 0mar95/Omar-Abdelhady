@@ -1343,3 +1343,162 @@ button {
 .table-box thead tr + tr th {
   position: static;
 }
+
+/* Study: kind label, grading, source link, review session. */
+.study-card .kind {
+  margin: 0 0 0.25em;
+  font-size: 0.72em;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  text-align: left !important;
+  text-indent: 0 !important;
+}
+.study-card .kind span {
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+.study-card .hint.working {
+  animation: breathe 1.6s ease-in-out infinite;
+}
+.study-card .why .source {
+  margin-left: 0.6em;
+  font-family: var(--ui-font);
+  font-style: normal;
+  font-size: 0.85em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--pencil);
+  white-space: nowrap;
+}
+.study-card .why .source:hover {
+  color: var(--accent);
+}
+.study-card .grades {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: 0.4em;
+  margin-top: 0.7em;
+}
+.study-card .grade {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1em;
+  padding: 0.45em 0.4em;
+  border-radius: 4px;
+  border: 1px solid var(--rule);
+  font-size: 0.9em;
+  color: var(--ink);
+}
+.study-card .grade .when {
+  font-size: 0.78em;
+  color: var(--ink-3);
+}
+.study-card .grade:hover {
+  border-color: var(--ink-3);
+}
+.study-card .grade.on {
+  border-color: var(--ink);
+  background: var(--paper-2);
+}
+.study-card .grade.g1.on {
+  border-color: #b4483c;
+}
+.study-card .again {
+  margin: 0.5em 0 0;
+  font-size: 0.85em;
+  color: var(--ink-3);
+  text-align: left !important;
+  text-indent: 0 !important;
+}
+.study-card .progress {
+  height: 2px;
+  margin: -0.2em 0 0.9em;
+  background: var(--rule);
+}
+.study-card .progress > div {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+.study-card .next-btn {
+  padding: 0.45em 1.1em;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 0.9em;
+  font-weight: 500;
+}
+.study-card .done {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4em;
+  padding: 0.6em 0 0.2em;
+}
+.study-card .done .big {
+  margin: 0;
+  font-family: var(--title-font);
+  font-size: 1.5em;
+}
+
+/* Library: Review today. */
+.review-panel {
+  padding: 1.1rem 1.2rem 1.15rem;
+  border-radius: 6px;
+  background: var(--card);
+  border: 1px solid var(--rule);
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+.review-panel p {
+  margin: 0;
+}
+.review-panel .label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.review-panel .count {
+  font-family: var(--title-font);
+  font-size: 34px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--ink);
+}
+.review-panel .count span {
+  font-size: 18px;
+  font-weight: 400;
+  font-style: italic;
+  color: var(--ink-2);
+}
+.review-panel .from {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.review-panel .start {
+  align-self: flex-start;
+  margin-top: 0.2rem;
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
+  border: 1px solid var(--ink);
+  font-size: 14px;
+  color: var(--ink);
+}
+.review-panel .start:hover {
+  background: var(--ink);
+  color: var(--paper);
+}
+.review-panel .streak {
+  font-family: var(--title-font);
+  font-style: italic;
+  font-size: 14px;
+  color: var(--pencil);
+}
