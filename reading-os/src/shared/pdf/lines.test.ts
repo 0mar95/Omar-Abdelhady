@@ -29,3 +29,22 @@ describe("letter-spaced lines", () => {
     expect(textOf([run("The biologic", 50, 60), run("model", 113, 28)])).toBe("The biologic model");
   });
 });
+
+describe("letter-spaced text stored with spaces", () => {
+  it("closes up letters stored with spaces between them", () => {
+    expect(textOf([run("J E F F R E Y", 50, 44), run("Mc", 100, 12), run("C L E N D O N ,", 113, 56), run("J O N A T H A N", 176, 60)])).toBe("JEFFREY McCLENDON, JONATHAN");
+  });
+});
+
+describe("letter-spaced labels", () => {
+  it("keeps the break before a number and wider gaps", () => {
+    expect(textOf([run("C h a p t e r 3", 50, 80)])).toBe("Chapter 3");
+    expect(textOf([run("T H E  B I O L O G I C  M O D E L", 50, 120)])).toBe("THE BIOLOGIC MODEL");
+  });
+});
+
+describe("letter-spaced lines with stray letters", () => {
+  it("joins single letters into the spaced words around them", () => {
+    expect(textOf([run("J E F F R E Y", 287, 44), run("M", 337, 8), run("c", 347, 4), run("C L E N D O N ,", 354, 56), run("J O N A T H A N", 417, 60), run("B.", 483, 9), run("L E V I N E", 498, 37)])).toBe("JEFFREY McCLENDON, JONATHAN B. LEVINE");
+  });
+});

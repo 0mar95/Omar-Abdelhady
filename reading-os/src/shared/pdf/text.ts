@@ -15,7 +15,13 @@ const LIGATURES: Record<string, string> = {
 };
 
 export function normalizeText(s: string): string {
-  return s.replace(/[ﬀ-ﬆ­‐‑ ]/g, (c) => LIGATURES[c] ?? c);
+  return s.replace(/[ﬀ-ﬆ­‐‑ ]/g, (c) => LIGATURES[c] ?? c)
+    // Bullets drawn with symbol fonts (Symbol, Wingdings) arrive as private-use characters.
+    .replace(/[\uF0A7\uF0B7\uF09F\uF0A8\uF06C\uF06E\uF075\uF076\uF0D8\uF0E0\uF0FC\uF0D7]/g, (c) => (c === "\uF0FC" ? "✓" : "•"))
+    // An unmapped symbol glyph (a control code) standing alone or before a space is a bullet;
+    // control codes are never text.
+    .replace(/^\s*[\u0001-\u0008\u000E-\u001F](?=\s|$)/, "•")
+    .replace(/[\u0001-\u0008\u000E-\u001F]/g, "");
 }
 
 const WORD_RE = /[A-Za-z][A-Za-z'’]*/g;

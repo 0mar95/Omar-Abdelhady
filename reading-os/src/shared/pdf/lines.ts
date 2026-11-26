@@ -247,6 +247,10 @@ function makeLine(page: number, runs: Run[], row: Row): Line {
     if (g.length >= 6) tracking = g[Math.floor(g.length / 2)];
   }
 
+  // A line of letter-spaced words stored with spaces ("J E F F R E Y  M c  C L E N D O N"):
+  // stray single letters between them ("M", "c") belong to the words; only a wide gap is a space.
+  const spacedLine = runs.filter((r) => /^(?:\S {1,3}){2,}\S\s?$/.test(normalizeText(r.str))).length >= 2;
+
   const spans: Span[] = [];
   let prevEnd = -Infinity;
   let prevSize = size;
@@ -255,8 +259,18 @@ function makeLine(page: number, runs: Run[], row: Row): Line {
     const raised = baseline - r.y > 0.12 * size;
     const lowered = r.y - baseline > 0.1 * size;
     let text = normalizeText(r.str);
+    // Letter-spaced type stored with real spaces between the letters ("J E F F R E Y").
+    // Wider gaps (two spaces) stay word breaks, and so does the step from letters to a number.
+    if (/^(?:\S {1,3}){2,}\S\s?$/.test(text) && !/\S\S/.test(text) && /\p{L}/u.test(text))
+      text = text
+        .split(/ {2,}/)
+        .map((w) => w.replace(/ (?=\S)/g, ""))
+        .join(" ")
+        .replace(/(\p{L})(\d)/gu, "$1 $2");
+    // An initial set apart from its full stop ("B .") in spaced type.
+    if (/^\p{Lu} \.$/u.test(text.trim())) text = text.replace(" .", ".");
     const gap = r.x - prevEnd;
-    const needsSpace = spans.length > 0 && gap > (tracking ? tracking + 0.2 * size : 0.12 * Math.min(prevSize, r.size));
+    const needsSpace = spans.length > 0 && gap > (tracking ? tracking + 0.2 * size : spacedLine ? 0.4 * size : 0.12 * Math.min(prevSize, r.size));
     const last = spans[spans.length - 1];
     if (needsSpace && last && !/\s$/.test(last.text) && !/^\s/.test(text)) {
       // A citation directly after a word should not get a space before it.

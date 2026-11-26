@@ -258,6 +258,8 @@ export function findFurniture(pages: { lines: Line[]; h: number }[], stats: Font
   // 2. How often each shape (numbers blanked) and each style-and-place appears on page edges.
   const shapes = new Map<string, number>();
   const exact = new Map<string, number>();
+  // The size each repeated text is usually set in: a running header is small every time.
+  const exactSizes = new Map<string, number[]>();
   const styles = new Map<string, number>();
   const styleKey = (r: Line[], h: number) => `${r[0].top < h / 2 ? "t" : "b"}|${r[0].font}|${Math.round(r[0].size)}|${Math.round(r[0].y / 4)}`;
   pages.forEach((p, pi) => {
@@ -267,6 +269,9 @@ export function findFurniture(pages: { lines: Line[]; h: number }[], stats: Font
     for (const r of edges[pi]) {
       sh.add(shape(rowText(r)));
       ex.add(rowText(r).toLowerCase());
+      const sizes = exactSizes.get(rowText(r).toLowerCase()) ?? [];
+      sizes.push(r[0].size);
+      exactSizes.set(rowText(r).toLowerCase(), sizes);
       if (inBand(r, p.h) || apart.has(r)) st.add(styleKey(r, p.h));
     }
     for (const k of sh) shapes.set(k, (shapes.get(k) ?? 0) + 1);
@@ -330,7 +335,12 @@ export function findFurniture(pages: { lines: Line[]; h: number }[], stats: Font
         continue;
       }
       // Repeating word for word (a book or chapter title in the margin); "Figure 1.20", "Figure 1.23" differ.
-      if (((exact.get(text.toLowerCase()) ?? 0) >= repeated && text.length < 100) || ((inBand(r, p.h) || apart.has(r)) && r.every((l) => l.size <= body * 1.15) && (styles.get(styleKey(r, p.h)) ?? 0) >= repeated)) for (const l of r) drop.add(l);
+      // (A chapter's big opening label can read the same as the small running header: it stays.)
+      // A chapter's title (or "Chapter 3" label) can read the same as the running header set
+      // small on its other pages: only the header-sized copies go.
+      const usual = median(exactSizes.get(text.toLowerCase()) ?? [r[0].size]);
+      const headerSized = Math.abs(r[0].size - usual) <= usual * 0.15;
+      if (((exact.get(text.toLowerCase()) ?? 0) >= repeated && text.length < 100 && !big && headerSized) || ((inBand(r, p.h) || apart.has(r)) && r.every((l) => l.size <= body * 1.15) && (styles.get(styleKey(r, p.h)) ?? 0) >= repeated)) for (const l of r) drop.add(l);
     }
     let label = lone?.text ?? fromHeader;
     // 4. Failing that: a lone number halfway down the outer margin, clear of the text.
@@ -424,4 +434,9 @@ export function area(r: Rect): number {
 
 export function contains(outer: Rect, inner: Rect, pad = 0): boolean {
   return inner.x0 >= outer.x0 - pad && inner.x1 <= outer.x1 + pad && inner.y0 >= outer.y0 - pad && inner.y1 <= outer.y1 + pad;
+}
+
+function median(xs: number[]): number {
+  const s = [...xs].sort((a, b) => a - b);
+  return s[Math.floor(s.length / 2)] ?? 0;
 }

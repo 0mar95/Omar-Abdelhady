@@ -71,3 +71,18 @@ describe("CAPTION_RE", () => {
     expect(CAPTION_RE.exec("Figure 1-1 Collimation")?.[2]).toBe("1-1");
   });
 });
+
+describe("symbol-font bullets", () => {
+  it("reads private-use bullet characters as bullets", () => {
+    expect(normalizeText(" 1–5 years")).toBe("• 1–5 years");
+    expect(normalizeText(" Demographic data")).toBe("• Demographic data");
+  });
+});
+
+describe("unmapped bullet glyphs", () => {
+  it("reads a lone control code as a bullet", () => {
+    expect(normalizeText("\u0002 Demographic data")).toBe("• Demographic data");
+    expect(normalizeText("\u0002")).toBe("•");
+    expect(normalizeText("text\u0003")).toBe("text");
+  });
+});

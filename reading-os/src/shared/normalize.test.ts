@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Block, HeadingBlock, ParagraphBlock } from "./model.ts";
-import { normalizeStructure, placeFigures, tidyHeading } from "./normalize.ts";
+import { normalizeStructure, numberChapterHeadings, placeFigures, splitGluedHeadings, tidyHeading } from "./normalize.ts";
 import { dropStrayNumbers } from "./pdf/analyze.ts";
 
 const R = { x0: 0, y0: 0, x1: 0, y1: 0 };
@@ -395,5 +395,34 @@ describe("chapter bylines", () => {
     expect(c.text).toBe("Integration of Function and Esthetics");
     expect(c.byline).toBe("Jeffrey McClendon, Jonathan B. Levine");
     expect(out.map((b) => b.id)).toEqual(["c", "p"]);
+  });
+});
+
+describe("glued and labelled headings", () => {
+  const rect = { x0: 0, y0: 0, x1: 1, y1: 1 };
+  it("splits two numbered headings read as one", () => {
+    const out = splitGluedHeadings([{ kind: "heading", id: "h", level: 3, text: "2.4.2 Condylar pattern in the frontal plane (Figures 2.8, 2.9, and 2.10) 2.4.2.1 Condyle of the bolus side", chapter: 0, page: 0, rect }] as Block[]) as HeadingBlock[];
+    expect(out.map((b) => [b.level, b.text])).toEqual([
+      [3, "2.4.2 Condylar pattern in the frontal plane (Figures 2.8, 2.9, and 2.10)"],
+      [4, "2.4.2.1 Condyle of the bolus side"],
+    ]);
+  });
+  it("leaves a heading with a number inside it alone", () => {
+    const one = [{ kind: "heading", id: "h", level: 2, text: "1.3.3 1986: First recording of chewing cycles", chapter: 0, page: 0, rect }] as Block[];
+    expect(splitGluedHeadings(one)).toHaveLength(1);
+  });
+  it("merges the bookmark's chapter with the page's own heading of the same title", () => {
+    const b = [
+      { kind: "heading", id: "c", level: 1, text: "Chapter 1 A Primer in Philosophy", chapter: 0, page: 0, rect },
+      { kind: "heading", id: "d", level: 1, text: "A Primer in Philosophy", chapter: 0, page: 0, rect },
+    ] as Block[];
+    const out = numberChapterHeadings(b);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ number: "1", text: "A Primer in Philosophy" });
+  });
+  it("numbers a chapter whose bookmark carries its label", () => {
+    const b = [{ kind: "heading", id: "c", level: 1, text: "Chapter 1 Introductory Explanation of Masticatory Function", chapter: 0, page: 0, rect }] as Block[];
+    const out = numberChapterHeadings(b);
+    expect(out[0]).toMatchObject({ number: "1", text: "Introductory Explanation of Masticatory Function" });
   });
 });

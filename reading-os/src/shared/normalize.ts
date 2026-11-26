@@ -5,7 +5,7 @@
 
 import { blockText, spansText, type Block, type ContentsEntry, type HeadingBlock, type Span, type TitlePageBlock } from "./model.ts";
 
-const CHAPTER_LABEL = /^(?:chapter|chap\.|part|book|unit|lesson|module)\s+([0-9]{1,3}|[ivxlc]{1,7}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b[.:—–-]?\s*(.*)$/i;
+const CHAPTER_LABEL = /^(?:chapter|chap\.|part|book|unit|lesson|module)\s*([0-9]{1,3}|[ivxlc]{1,7}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b[.:—–-]?\s*(.*)$/i;
 const NUMBERED = /^(\d{1,3})\.?\s+(\p{Lu}.{2,})$/u;
 const SMALL_WORDS = new Set(["a", "an", "and", "as", "at", "but", "by", "for", "from", "in", "into", "nor", "of", "on", "or", "over", "per", "the", "to", "vs", "via", "with"]);
 
@@ -41,6 +41,7 @@ export function normalizeStructure(input: Block[], totalWords?: number): Block[]
       : b,
   );
   for (const b of blocks) if (b.kind === "heading") b.text = tidyHeading(b.text);
+  blocks = splitGluedHeadings(blocks);
   // A piece of an equation set large ("(D1)2", "x = 2") is not a heading.
   blocks = blocks.map((b) =>
     b.kind === "heading" && (b.text.match(/\p{L}/gu) ?? []).length < 3 && /[()=+^/×÷√∑]/.test(b.text)
@@ -73,7 +74,9 @@ export function normalizeStructure(input: Block[], totalWords?: number): Block[]
     // "Chapter 3" with its title set as an ordinary line just after it.
     if (m && !m[2].trim() && next?.kind === "paragraph" && next.page <= b.page + 1) {
       const title = next.spans.map((x) => x.text).join("").replace(/\s+/g, " ").trim();
-      if (titleLike(title)) {
+      // (A line of names in capitals, "FRANK CELENZA", is the byline, not the title.)
+      const shouting = title === title.toUpperCase() && /\p{Lu}{2}/u.test(title);
+      if (titleLike(title) && !(shouting && isByline(nameCase(title)))) {
         merged.push({ ...b, number: m[1], text: tidyHeading(title) });
         i++;
         continue;
@@ -167,7 +170,8 @@ export function normalizeStructure(input: Block[], totalWords?: number): Block[]
 
 /** "JEFFREY McCLENDON" → "Jeffrey McClendon": names in capitals, written normally. */
 export function nameCase(line: string): string {
-  return line.replace(/(\p{L}[\p{L}'’-]*)/gu, (w) => {
+  // "B ." from letter-spaced type is an initial: "B."
+  return line.replace(/\b(\p{Lu}) \.(?=\s|,|$)/gu, "$1.").replace(/(\p{L}[\p{L}'’-]*)/gu, (w) => {
     if (w.length <= 1 || /\p{Ll}/u.test(w.replace(/^(Mc|Mac)/, ""))) return w;
     const mc = /^(Mc|Mac)(?=\p{Lu})/u.exec(w)?.[1] ?? "";
     const rest = w.slice(mc.length).toLowerCase().replace(/(^|[-'’])(\p{L})/gu, (_, p: string, c: string) => p + c.toUpperCase());
@@ -179,7 +183,7 @@ export function nameCase(line: string): string {
  * The authors printed under a chapter's title ("JEFFREY McCLENDON, JONATHAN B.
  * LEVINE") become the chapter's byline, shown with the title, not as text.
  */
-function chapterBylines(blocks: Block[]): Block[] {
+export function chapterBylines(blocks: Block[]): Block[] {
   const drop = new Set<number>();
   blocks.forEach((b, i) => {
     // Numbered chapters only: a book's own title page keeps its editors.
@@ -198,6 +202,83 @@ function chapterBylines(blocks: Block[]): Block[] {
     }
   });
   return drop.size ? blocks.filter((_, i) => !drop.has(i)) : blocks;
+}
+
+/**
+ * Two numbered headings set on consecutive lines and read as one
+ * ("2.4.2 Condylar pattern 2.4.2.1 Condyle of the bolus side") become two,
+ * the second a level deeper.
+ */
+export function splitGluedHeadings(blocks: Block[]): Block[] {
+  const out: Block[] = [];
+  for (const b of blocks) {
+    let cur: Block = b;
+    for (;;) {
+      if (cur.kind !== "heading") break;
+      const m = /^(\d+(?:\.\d+){0,5}\s+.*?\S)\s+(\d+(?:\.\d+){1,5})\s+(\p{Lu}.*)$/u.exec(cur.text);
+      const first = m && /^(\d+(?:\.\d+)*)/.exec(m[1])![1];
+      // The second number must continue the first ("2.4.2" → "2.4.2.1" or "2.4.3").
+      if (!m || !first || !m[2].startsWith(first.split(".").slice(0, -1).join(".")) || m[2] === first) break;
+      out.push({ ...cur, text: m[1] });
+      const deeper = m[2].split(".").length > first.split(".").length;
+      cur = { ...cur, id: `${cur.id}-2`, text: `${m[2]} ${m[3]}`, level: Math.min(4, cur.level + (deeper ? 1 : 0)) as HeadingBlock["level"] };
+    }
+    out.push(cur);
+  }
+  return out;
+}
+
+/**
+ * "Chapter 1 Introductory Explanation" → number 1, title "Introductory Explanation"
+ * (after bookmarks are applied). When the page's own heading with the same title
+ * follows straight after, the two are one heading.
+ */
+export function numberChapterHeadings(blocks: Block[]): Block[] {
+  const drop = new Set<number>();
+  blocks.forEach((b, i) => {
+    if (b.kind !== "heading" || b.level !== 1 || b.number) return;
+    const m = CHAPTER_LABEL.exec(b.text);
+    if (!m || !m[2].trim()) return;
+    b.number = m[1];
+    b.text = m[2].trim();
+    for (let k = i + 1; k < blocks.length && k <= i + 3; k++) {
+      const n = blocks[k];
+      if (n.kind === "heading" && key(n.text) === key(b.text)) {
+        drop.add(k);
+        break;
+      }
+      if (n.kind !== "figure") break;
+    }
+  });
+  const out = drop.size ? blocks.filter((_, i) => !drop.has(i)) : blocks;
+  sectionsUnderNumberedChapters(out);
+  return out;
+}
+
+const BACK_MATTER = /^(?:references|bibliography|further reading|index|glossary|appendix|appendices|notes|acknowledg|about the author|abbreviations|answers)/i;
+
+/**
+ * In a book whose chapters are numbered, an unnumbered top-level heading
+ * between two numbered chapters ("Introduction", "Metaphysics") is a section
+ * of the chapter before it. Back matter after the last chapter stays on top.
+ */
+export function sectionsUnderNumberedChapters(blocks: Block[]): void {
+  const numbered = blocks.map((b, i) => (b.kind === "heading" && b.level === 1 && b.number ? i : -1)).filter((i) => i >= 0);
+  if (numbered.length < 3) return;
+  const first = numbered[0];
+  for (let i = first + 1; i < blocks.length; i++) {
+    const b = blocks[i];
+    if (b.kind !== "heading" || b.level !== 1 || b.number) continue;
+    if (BACK_MATTER.test(b.text)) continue;
+    // After the last numbered chapter, only headings that read as its sections move down.
+    if (i > numbered[numbered.length - 1] && /^(?:part|section)\b/i.test(b.text)) continue;
+    b.level = 2;
+  }
+}
+
+/** "JONATHAN B. LEVINE, SIVAN FINKEL": a line of authors (not a "3 / Names" contents line). */
+function authorLine(t: string): boolean {
+  return !!t && !t.includes("/") && t.split(/\s+/).length <= 16 && /,/.test(t) && isByline(nameCase(t));
 }
 
 /** A line that reads as a title: short, capitalised, not a sentence. */
@@ -228,41 +309,79 @@ export function dropChapterContents(blocks: Block[]): Block[] {
     }
     // Is `t` made of later headings (other than block k itself), separated by page numbers?
     const isList = (t: string, k: number) => {
-      const tokens = t.replace(/\s+/g, " ").trim().split(" ");
+      // Dot leaders, and dots that stand in for spaces ("Clinical .considerations").
+      const tokens = t
+        .replace(/(?:\s*\.){3,}\s*/g, " ")
+        .replace(/\s\.(?=\p{L})/gu, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .split(" ");
       const num = (w: string) => /^\d{1,4}$/.test(w);
       let a = 0;
       while (a < tokens.length && num(tokens[a])) a++;
-      if (a >= tokens.length) return "number";
+      if (a >= tokens.length) return 0;
       // Numbers can end a title ("Clinical case 3 1") or be the page number after it.
       const z = tokens.length;
-      const ok = new Array(z + 1).fill(false);
-      ok[a] = true;
+      // Read it as entries ending at page numbers (titles may hold numbers too,
+      // "Clinical case 3 1"): best[i] = most entries matching a later heading.
+      const best: ({ hit: number; all: number } | null)[] = new Array(z + 1).fill(null);
+      best[a] = { hit: 0, all: 0 };
       for (let i = a; i < z; i++) {
-        if (!ok[i]) continue;
+        const from = best[i];
+        if (!from) continue;
         for (let j = i + 1; j <= z; j++) {
+          if (j < z && !num(tokens[j])) continue;
           const at = later.get(key(tokens.slice(i, j).join(" ")));
-          if (!at || !at.some((x) => x > k)) continue;
-          ok[j] = true;
-          if (j < z && num(tokens[j])) ok[j + 1] = true;
+          const hit = at?.some((x) => x > k) ? 1 : 0;
+          const next = { hit: from.hit + hit, all: from.all + 1 };
+          // A page number follows the title (and may be the last token).
+          const to = j < z ? j + 1 : z;
+          const cur = best[to];
+          if (!cur || next.hit > cur.hit || (next.hit === cur.hit && next.all < cur.all)) best[to] = next;
+          if (j < z && to <= z) {
+            const stay = best[j];
+            if (!stay || next.hit > stay.hit) {
+              /* the number may also end the line: handled when j reaches z */
+            }
+          }
         }
       }
-      for (let j = z; j > a; j--) {
-        if (ok[j]) return "entry";
-        if (!num(tokens[j - 1])) break;
-      }
-      return null;
+      const end = best[z];
+      if (!end || !end.hit) return null;
+      // Most entries are the chapter's own headings (a book's list and its headings can differ a little).
+      return end.hit >= end.all * 0.6 ? end.hit : null;
     };
     const found: number[] = [];
     let entries = 0;
     for (let k = from + 1; k < to; k++) {
       const b = blocks[k];
       if (b.kind === "figure" || b.kind === "about") continue;
+      // A chapter heading is never part of a contents list (and ends the opening).
+      if (b.kind === "heading" && (b.level === 1 || b.number)) break;
+      // A contents block listing the chapter's own sections.
+      if (b.kind === "contents") {
+        const hits = b.entries.filter((e) => (isList(e.title, k) ?? 0) > 0).length;
+        if (hits >= Math.max(2, b.entries.length * 0.6)) {
+          found.push(k);
+          entries += hits;
+          continue;
+        }
+        break;
+      }
       const t = b.kind === "heading" ? b.text : b.kind === "paragraph" ? b.spans.map((x) => x.text).join("") : null;
       if (t === null) break;
-      const kind = isList(t, k);
-      if (kind) {
+      let n = isList(t, k);
+      // An entry wrapping onto the next line: read it with the line before.
+      const bare = t.replace(/(?:\s*\.){2,}\s*/g, " ").replace(/\s\.(?=\p{L})/gu, " ").trim();
+      if (n === null && found[found.length - 1] === k - 1 && bare.split(/\s+/).length <= 12 && !/[!?]$|\p{L}\.$/u.test(bare)) {
+        const prev = blocks[k - 1];
+        const before = prev.kind === "heading" ? prev.text : prev.kind === "paragraph" ? prev.spans.map((x) => x.text).join("") : "";
+        const joined = isList(`${before} ${t}`, k);
+        if (joined !== null && joined > (isList(before, k) ?? 0)) n = joined - (isList(before, k) ?? 0);
+      }
+      if (n !== null) {
         found.push(k);
-        if (kind === "entry") entries++;
+        entries += n;
         continue;
       }
       // Bylines and the chapter's title lines sit among them; body text ends the opening.
@@ -669,6 +788,8 @@ export function recoverContents(input: Block[]): Block[] {
   for (let i = started ? startedAt + 1 : 0; i < blocks.length && blocks[i].page - firstPage <= 30; i++) {
     if (word && blocks[i].page < word.page) continue;
     if (started && i > startedAt + 1) break;
+    // A chapter's own section list follows its byline: that's not the book's contents.
+    if (authorLine(textOf(blocks[i])) || (i > 0 && authorLine(textOf(blocks[i - 1])))) continue;
     // Take the run: short headings/paragraphs, page numbers and "N / Authors" lines.
     let j = i;
     let numbers = 0;
@@ -676,6 +797,14 @@ export function recoverContents(input: Block[]): Block[] {
       const b = blocks[j];
       const t = textOf(b);
       if ((b.kind !== "heading" && b.kind !== "paragraph") || !t || t.length > 150 || (b.kind === "paragraph" && /[.!?]$/.test(t) && t.split(" ").length > 10)) break;
+      // A chapter's opening page ("Chapter 1" heading on a new page) ends the contents.
+      const label = b.kind === "heading" ? CHAPTER_LABEL.exec(t) : null;
+      if (label && !label[2].trim() && j > i && b.page > blocks[j - 1].page) break;
+      // A chapter opener's byline ("JONATHAN B. LEVINE, SIVAN FINKEL") is not a contents line:
+      // contents pages give authors as "3 / Names" after a title.
+      // (Unless it continues the authors on the line before: "…Tal Morr," / "Vincent Fehmer, Irena Sailer".)
+      const prevLine = j > i ? textOf(blocks[j - 1]) : "";
+      if (j > i && authorLine(t) && !/,\s*$/.test(prevLine) && !prevLine.includes("/")) break;
       if (PAGE_NO.test(t)) numbers++;
       j++;
     }

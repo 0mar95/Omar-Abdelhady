@@ -55,6 +55,17 @@ function findCaptions(lines: Line[], stats: FontStats): Caption[] {
     const capLines = [l];
     taken.add(l);
     let rect = lineRect(l);
+    // "Figure 1.13   First plots of…": the label and its description on one row, set apart.
+    let bodyStyled = false;
+    if (lead.replace(CAPTION_RE, "").trim().length < 3) {
+      const beside = lines.find((n) => !taken.has(n) && Math.abs(n.top - l.top) <= 2 && n.x0 > l.x1 && n.x0 - l.x1 < l.size * 4 && !CAPTION_RE.test(n.text.trim()));
+      if (beside) {
+        capLines.push(beside);
+        taken.add(beside);
+        rect = union(rect, lineRect(beside));
+        bodyStyled = true;
+      }
+    }
     // Caption text that wraps onto following lines in the same style.
     for (const n of lines) {
       if (taken.has(n) || n.top < rect.y1 - 1) continue;
@@ -64,9 +75,15 @@ function findCaptions(lines: Line[], stats: FontStats): Caption[] {
       if (n.top > last.bottom + last.size * 0.9) break;
       // The caption's title and description may be set in other styles, aligned under its label.
       const sameStyle = Math.abs(n.size - l.size) <= 0.3 && n.font === l.font;
+      // "Figure 1.13" alone on its line, its description starting right under it.
+      const labelLine = capLines.length === 1 && lead.replace(CAPTION_RE, "").trim().length < 3;
+      const description =
+        (labelLine && Math.abs(n.x0 - rect.x0) <= 4 && !CAPTION_RE.test(n.text.trim()) && /^\p{Lu}/u.test(n.text.trim())) ||
+        // The rest of a description begun beside the label wraps under the label.
+        (bodyStyled && Math.abs(n.x0 - rect.x0) <= 4);
       // (Figures only: under a table's caption, such lines are the table itself.)
       const underLabel = type === "figure" && Math.abs(n.x0 - rect.x0) <= 4 && !isBodyText(n, stats) && n.size <= l.size * 1.2;
-      if (!sameStyle && !underLabel) continue;
+      if (!sameStyle && !underLabel && !description) continue;
       if (overlapX(lineRect(n), rect) <= 0 || n.x0 < rect.x0 - 2) continue;
       if (CAPTION_RE.test(n.text.trim())) break;
       capLines.push(n);
@@ -168,6 +185,8 @@ export function findRegions(page: PageForRegions, layout: PageLayout, stats: Fon
   const hasImage = (r: Rect) => candidates.some((g) => g.kind === "image" && contains(r, g, 1));
   const banner = (r: Rect) => !hasImage(r) && r.y1 - r.y0 < 40 && (r.x1 - r.x0) / Math.max(1, r.y1 - r.y0) > 6;
   const clusters = cluster(candidates, 6).filter((r) => r.x1 - r.x0 > 12 && r.y1 - r.y0 > 12 && !banner(r));
+  // A chart or diagram drawn with lines (no picture): sizeable and made of many strokes.
+  const drawing = (r: Rect) => area(r) > pageArea * 0.03 && candidates.filter((g) => g.kind === "path" && contains(r, g, 1)).length >= 6;
   const takenClusters = new Set<Rect>();
   for (const c of captions.filter((c) => c.type === "figure")) {
     let best: Rect | undefined;
@@ -187,7 +206,7 @@ export function findRegions(page: PageForRegions, layout: PageLayout, stats: Fon
     // "Fig. 1.22" alone in the margin of the text points to a figure printed elsewhere:
     // without a description it's only a figure if a picture is right beside it.
     const labelOnly = c.lines.map((l) => l.text).join(" ").replace(/^[^\p{L}]*/u, "").replace(CAPTION_RE, "").trim().length < 3;
-    if (labelOnly && !(best && bestD < 40 && hasImage(best))) {
+    if (labelOnly && !(best && bestD < 40 && (hasImage(best) || drawing(best)))) {
       for (const l of c.lines) used.delete(l);
       continue;
     }
@@ -195,6 +214,18 @@ export function findRegions(page: PageForRegions, layout: PageLayout, stats: Fon
     if (best && bestD < page.h * 0.35) {
       takenClusters.add(best);
       crop = best;
+      // A figure of several panels: every drawing between the text above and the caption.
+      if (best.y1 <= c.rect.y0 + 4) {
+        const textAbove = lines.filter((l) => !used.has(l) && isBodyText(l, stats) && l.text.split(" ").length > 6 && l.bottom <= best!.y0 && overlapX(lineRect(l), c.rect) > 0);
+        const ceiling = textAbove.length ? Math.max(...textAbove.map((l) => l.bottom)) : 0;
+        for (const cl of clusters) {
+          if (takenClusters.has(cl) || cl.y0 < ceiling - 2 || cl.y1 > c.rect.y0 + 4) continue;
+          const prose = lines.filter((l) => !used.has(l) && isBodyText(l, stats) && l.text.split(" ").length > 6 && contains(cl, lineRect(l), 2)).length;
+          if (prose > 3) continue;
+          takenClusters.add(cl);
+          crop = union(crop, cl);
+        }
+      }
     } else {
       // No drawing found: use the space above the caption up to the text before it.
       const col = layout.columns.find((k) => c.rect.x0 >= k.x0 - 4 && c.rect.x0 <= k.x1) ?? layout.columns[0];
@@ -214,7 +245,10 @@ export function findRegions(page: PageForRegions, layout: PageLayout, stats: Fon
       // Labels are short; a sentence of body text never is one.
       if (isBodyText(l, stats) && l.text.split(" ").length > 6) continue;
       const inside = cx >= crop.x0 - 2 && cx <= crop.x1 + 2 && cy >= crop.y0 - 2 && cy <= crop.y1 + 2;
-      const touching = !isBodyText(l, stats) && overlapX(lr, crop) > 0.5 * (lr.x1 - lr.x0) && lr.y0 < crop.y1 + 8 && lr.y1 > crop.y0 - 8;
+      // Axis ticks and units ("–5", "20,0", "86 microvolt") hug a chart even when set in the body font.
+      const tick = /^[–-]?\d+(?:[.,]\d+)?(?:\s*[\p{L}%°µ]{0,10})?$/u.test(l.text.trim());
+      const near = overlapX(lr, crop) > 0.5 * (lr.x1 - lr.x0) && lr.y0 < crop.y1 + 8 && lr.y1 > crop.y0 - 8;
+      const touching = (!isBodyText(l, stats) || tick) && near;
       if (inside || touching) labels.push(l);
     }
     for (const l of labels) {
@@ -249,6 +283,19 @@ export function findRegions(page: PageForRegions, layout: PageLayout, stats: Fon
     over.forEach((l) => used.add(l));
     const crop = pad(cl, 2, page);
     regions.push({ type: "figure", page: page.index, cont: false, rect: crop, crop, captionLines: [], contentLines: over });
+  }
+  // Charts and diagrams without a caption: a drawing holding several short
+  // labels ("Sagittal plane", "10", "mm") and no running text.
+  for (const cl of opener ? [] : clusters) {
+    if (takenClusters.has(cl) || !drawing(cl) || regions.some((r) => overlapX(r.rect, cl) > 0 && overlapY(r.rect, cl) > 0)) continue;
+    const edges = [cl.x0 <= 2, cl.y0 <= 2, cl.x1 >= page.w - 2, cl.y1 >= page.h - 2].filter(Boolean).length;
+    if (edges >= 1) continue;
+    const inside = lines.filter((l) => !used.has(l) && contains(pad(cl, 4, page), lineRect(l), 2));
+    const short = inside.filter((l) => l.text.trim().split(/\s+/).length <= 4 && !/[.!?]$/.test(l.text.trim()));
+    if (inside.length < 4 || short.length < inside.length * 0.85) continue;
+    inside.forEach((l) => used.add(l));
+    const crop = pad(cl, 3, page);
+    regions.push({ type: "figure", page: page.index, cont: false, rect: crop, crop, captionLines: [], contentLines: inside });
   }
   return regions;
 }
