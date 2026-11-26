@@ -29,7 +29,7 @@ export interface SectionRange {
 const MAX = 5;
 
 /** Questions for blocks [start, end) of the book. `terms` is the book's glossary. */
-export function bookQuestions(book: BookDoc, rawTexts: string[], range: SectionRange, terms: GlossaryTerm[]): Draft[] {
+export function bookQuestions(book: BookDoc, rawTexts: string[], range: SectionRange, terms: GlossaryTerm[], max = MAX): Draft[] {
   // Paragraph text without citation numbers and superscripts ("pain.12" → "pain.").
   // Unmarked ones too: a number glued after a word's punctuation ("interactions.12", "100%.8").
   const texts = rawTexts.map((t, i) => {
@@ -44,7 +44,7 @@ export function bookQuestions(book: BookDoc, rawTexts: string[], range: SectionR
   const out: Draft[] = [];
   const used = new Set<string>();
   const add = (d: Draft | null) => {
-    if (!d || out.length >= MAX) return;
+    if (!d || out.length >= max) return;
     const key = norm(d.q);
     if (used.has(key)) return;
     used.add(key);
@@ -95,9 +95,9 @@ export function bookQuestions(book: BookDoc, rawTexts: string[], range: SectionR
   const tables = tableQuestions(book, range, seed);
 
   // A mix: one of each kind first, then the rest; acronyms last, at most two.
-  const lists = [definitions, tables, numbers, clozes, spelled.slice(0, 2)];
+  const lists = [definitions, tables, numbers, clozes, spelled.slice(0, Math.max(2, Math.floor(max / 3)))];
   for (const l of lists) add(l[0] ?? null);
-  for (let k = 1; out.length < MAX && lists.some((l) => l.length > k); k++) for (const l of lists) add(l[k] ?? null);
+  for (let k = 1; out.length < max && lists.some((l) => l.length > k); k++) for (const l of lists) add(l[k] ?? null);
   return out;
 }
 

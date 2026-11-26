@@ -73,6 +73,9 @@ interface StudyStore {
   due(): Question[];
 }
 
+/** Questions in a chapter's quiz. */
+const QUIZ_SIZE = 8;
+
 const ready = (r: Card | LegacyReview): Card => ("s" in r ? r : fromLegacy(r));
 
 /** Placeholder options from older versions ("The opposite of that"): such questions are dropped. */
@@ -99,7 +102,7 @@ export const useStudy = create<StudyStore>((set, get) => ({
       const blocks: { id: string; text: string }[] = [];
       for (let i = sec.start; i < sec.end; i++) blocks.push({ id: book.blocks[i].id, text: ix.texts[i] });
       const terms = useGlossary.getState().bookId === book.id && useGlossary.getState().terms.length ? useGlossary.getState().terms : extractGlossary(book);
-      const own = bookQuestions(book, ix.texts, { start: sec.start, end: sec.end }, terms).map((d) => ({ ...d, from: "book" as const }));
+      const own = bookQuestions(book, ix.texts, { start: sec.start, end: sec.end }, terms, QUIZ_SIZE).map((d) => ({ ...d, from: "book" as const }));
       let ai: (Draft & { from: "ai" })[] = [];
       try {
         const drafts = await fromModel(sec);
@@ -112,7 +115,7 @@ export const useStudy = create<StudyStore>((set, get) => ({
         /* the model isn't running: the book's own questions are used */
       }
       // The model's checked questions first, then the book's own, five in all.
-      const made = [...ai, ...own.filter((o) => !ai.some((a) => a.blockId === o.blockId && a.kind === o.kind))].slice(0, 5);
+      const made = [...ai, ...own.filter((o) => !ai.some((a) => a.blockId === o.blockId && a.kind === o.kind))].slice(0, QUIZ_SIZE);
       if (!made.length) throw new Error("There isn't enough in this section to ask about yet.");
       const stamp = Date.now().toString(36);
       const qs: Question[] = made.map((m, i) => ({ ...m, id: `${sectionId}:${stamp}:${i}`, sectionId, section: sec.title }));
@@ -140,6 +143,22 @@ export const useStudy = create<StudyStore>((set, get) => ({
     return questions.filter((q) => reviews[q.id] && reviews[q.id].due <= now);
   },
 }));
+
+/** Up to `max` characters drawn evenly from every part of a long text, so a chapter quiz covers all of it. */
+function sample(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const parts = text.split(/\n\n+/);
+  const share = Math.max(200, Math.floor(max / parts.length));
+  const out: string[] = [];
+  let used = 0;
+  const step = parts.length * share > max * 1.6 ? Math.ceil((parts.length * share) / max) : 1;
+  for (let k = 0; k < parts.length && used < max; k += step) {
+    const piece = parts[k].length > share ? `${parts[k].slice(0, share)}…` : parts[k];
+    out.push(piece);
+    used += piece.length;
+  }
+  return out.join("\n\n");
+}
 
 function upgrade(reviews: Record<string, Card | LegacyReview> | undefined): Record<string, Card> {
   const out: Record<string, Card> = {};
@@ -266,57 +285,42 @@ export function sectionOf(book: BookDoc, ix: BookIndex, headingId: string): Sect
 const groups = new WeakMap<BookDoc, Map<string, number>>();
 
 /**
- * Where quizzes go: after each section (chapter or section level) with enough
- * to ask about; short neighbouring sections are grouped until there is.
- * Returns: id of the last block covered → id of the heading the quiz starts at.
+ * Where quizzes go: one at the end of each chapter, covering the whole
+ * chapter (after its last passage, before its reference list). A book with
+ * no chapters gets one at its end.
+ * Returns: id of the last block covered → id of the block the quiz starts at.
  */
 export function quizSections(book: BookDoc, ix: BookIndex): Map<string, string> {
   const out = new Map<string, string>();
   const ends = new Map<string, number>();
-  const bounds = book.blocks.map((b, i) => (b.kind === "heading" && b.level <= 2 ? i : -1)).filter((i) => i >= 0);
-  const wordsIn = (a: number, z: number) => {
+  const readable = (k: number) => {
+    const b = book.blocks[k];
+    return b.kind === "paragraph" || b.kind === "list" || b.kind === "callout" || b.kind === "box";
+  };
+  const words = (a: number, z: number) => {
     let n = 0;
-    for (let i = a; i < z; i++) {
-      const b = book.blocks[i];
-      if (b.kind === "paragraph" || b.kind === "list" || b.kind === "callout" || b.kind === "box") n += (ix.texts[i].match(/\S+/g) ?? []).length;
-    }
+    for (let k = a; k < z; k++) if (readable(k)) n += (ix.texts[k].match(/\S+/g) ?? []).length;
     return n;
   };
-  let groupStart = -1;
-  for (let k = 0; k < bounds.length; k++) {
-    const at = bounds[k];
-    const next = bounds[k + 1] ?? book.blocks.length;
-    const head = book.blocks[at];
-    // A new chapter never joins the previous chapter's group.
-    if (head.kind === "heading" && head.level === 1 && groupStart >= 0 && wordsIn(groupStart, at) >= 120) close(groupStart, at);
-    if (head.kind === "heading" && head.level === 1) groupStart = -1;
-    if (groupStart < 0) groupStart = at;
-    // A chapter's opening lines before its first section join that section's quiz,
-    // unless the introduction is a real section in its own right.
-    const intro = book.blocks[groupStart].kind === "heading" && (book.blocks[groupStart] as { level: number }).level === 1 && groupStart === at;
-    if (wordsIn(groupStart, next) >= (intro ? 400 : 220)) {
-      close(groupStart, next);
-      groupStart = -1;
-    }
+  const chapters = book.chapters.filter((c) => book.blocks[c.start]?.kind === "heading" && c.title !== "Front matter");
+  const spans = chapters.length ? chapters.map((c) => [c.start, c.end] as const) : [[0, book.blocks.length] as const];
+  for (const [start, end] of spans) {
+    if (words(start, end) < 150) continue;
+    // After the chapter's last passage: its references and index come after the quiz.
+    let last = end - 1;
+    while (last > start && !readable(last)) last--;
+    out.set(book.blocks[last].id, book.blocks[start].id);
+    ends.set(book.blocks[start].id, end);
   }
-  if (groupStart >= 0 && wordsIn(groupStart, book.blocks.length) >= 120) close(groupStart, bounds.find((b) => b > groupStart && (book.blocks[b] as { level?: number }).level === 1) ?? book.blocks.length);
   groups.set(book, ends);
   return out;
-
-  function close(from: number, to: number) {
-    const last = book.blocks[to - 1];
-    const head = book.blocks[from];
-    if (!last || !head) return;
-    out.set(last.id, head.id);
-    ends.set(head.id, to);
-  }
 }
 
 const SYSTEM = `You write self-test questions for a student reading a textbook (often dental or medical).
 Rules:
 - Use ONLY facts stated in the section text. Never add outside knowledge.
 - Ask about what matters: definitions, how things work, how similar things differ, numbers and thresholds that matter clinically.
-- Write 4 multiple-choice questions, each with 4 options: one clearly right, three plausible wrong ones from the same topic, similar in length. No "all of the above" or "none of the above".
+- Write 6 multiple-choice questions spread across the whole text (beginning, middle and end), each with 4 options: one clearly right, three plausible wrong ones from the same topic, similar in length. No "all of the above" or "none of the above".
 - Vary the kinds: "definition", "compare" (how two things differ), "number" (a value, dose, threshold or percentage), "concept" (why or how).
 - If the section describes diagnosis or treatment, make one of them a "case": a 1–2 sentence patient description, asking for the most likely diagnosis or the best next step, answerable from the text.
 - For every question give "quote": the sentence from the text, copied word for word, that proves the answer.
@@ -324,7 +328,7 @@ Rules:
 {"questions":[{"kind":"definition","q":"…","options":["…","…","…","…"],"answer":0,"quote":"…"}]}`;
 
 async function fromModel(sec: Section): Promise<Draft[]> {
-  const text = sec.text.length > 7000 ? `${sec.text.slice(0, 7000)}…` : sec.text;
+  const text = sample(sec.text, 7000);
   const messages: ChatMessage[] = [
     { role: "system", content: SYSTEM },
     { role: "user", content: `Chapter: ${sec.chapter}\nSection: ${sec.title}\n\nSection text:\n"""${text}"""\n\nWrite the questions as JSON.` },
@@ -365,7 +369,7 @@ Reply with JSON only: {"verdicts":[{"n":1,"ok":true}]}`;
 
 /** A second pass: the model confirms each marked answer is right and the only right one. */
 async function confirm(sec: Section, drafts: Draft[]): Promise<Draft[]> {
-  const text = sec.text.length > 7000 ? `${sec.text.slice(0, 7000)}…` : sec.text;
+  const text = sample(sec.text, 7000);
   const list = drafts
     .map((d, i) => `${i + 1}. ${d.q}\n${(d.options ?? []).map((o, k) => `   ${String.fromCharCode(65 + k)}) ${o}${k === d.answer ? "   ← marked answer" : ""}`).join("\n")}`)
     .join("\n\n");
@@ -426,5 +430,5 @@ export function parseQuestions(reply: string): Draft[] {
       out.push({ kind, type: "short", q: text, answer: q.answer.trim(), why });
     }
   }
-  return out.slice(0, 6);
+  return out.slice(0, 8);
 }
