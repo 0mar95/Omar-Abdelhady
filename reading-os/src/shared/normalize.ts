@@ -88,6 +88,13 @@ export function normalizeStructure(input: Block[], totalWords?: number): Block[]
     merged.push(n ? { ...b, number: n[1], text: n[2].trim() } : b);
   }
   blocks = merged;
+  // The big number printed above a chapter title, left as a heading of its own once
+  // the chapter has taken it ("1" then "1 · Brand, Retail and Competitor Research").
+  blocks = blocks.filter((b, i) => {
+    if (b.kind !== "heading" || !/^\d{1,3}$/.test(b.text.trim())) return true;
+    const next = blocks.slice(i + 1, i + 3).find((n) => n.kind === "heading");
+    return !(next && next.kind === "heading" && next.number === b.text.trim());
+  });
   blocks = chapterBylines(blocks);
   // Before anything else reads headings: the chapter's own contents list would
   // otherwise pass for a page of headings, or for the first copy of each.
