@@ -50,3 +50,24 @@ describe("fsrs", () => {
     expect(c.reps).toBe(3);
   });
 });
+
+describe("fsrs choices", () => {
+  it("offers four different returns, even right after a miss", () => {
+    let c = review(undefined, 3, t0);
+    c = review(c, 1, c.due); // missed at review
+    const now = c.last + 10 * 60_000; // relearning the same day
+    const labels = ([1, 2, 3, 4] as const).map((g) => nextLabel(c, g, now));
+    expect(new Set(labels).size).toBe(4);
+    expect(labels[0]).toBe("10 min");
+    expect(labels[1]).toBe("15 min");
+    expect(labels[2]).toBe("1 day");
+    expect(labels[3]).toBe("2 days");
+  });
+  it("keeps Hard ≤ Good < Easy in a normal review", () => {
+    let c = review(undefined, 3, t0);
+    c = review(c, 3, c.due);
+    const due = ([2, 3, 4] as const).map((g) => review(c, g, c.due).due);
+    expect(due[0]).toBeLessThanOrEqual(due[1]);
+    expect(due[2]).toBeGreaterThan(due[1]);
+  });
+});
