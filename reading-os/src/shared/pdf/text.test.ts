@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { joinLines, normalizeText, parseCitation, WordBook, xrefKey } from "./text.ts";
+import { CAPTION_RE, joinLines, normalizeText, parseCitation, WordBook, XREF_RE, xrefKey } from "./text.ts";
 
 describe("normalizeText", () => {
   it("expands ligatures and drops soft hyphens", () => {
@@ -46,5 +46,28 @@ describe("xrefKey", () => {
     expect(xrefKey("Fig", "1- 2")).toBe("Fig 1-2");
     expect(xrefKey("Tables", "2–4")).toBe("Table 2-4");
     expect(xrefKey("Box", "5-3")).toBe("Box 5-3");
+  });
+});
+
+describe("XREF_RE", () => {
+  const refs = (s: string) => [...s.matchAll(XREF_RE)].map((m) => [m[0], m[2], m[3] ?? ""]);
+  it("takes the whole reference, panel letters included", () => {
+    expect(refs("Facial (Fig. 1.32A–C): full smile")).toEqual([["Fig. 1.32A–C", "1.32", "A–C"]]);
+    expect(refs("Retracted frontal (Fig. 1.37A-B)")).toEqual([["Fig. 1.37A-B", "1.37", "A-B"]]);
+    expect(refs("see Fig 5a and Figure 3-2.")).toEqual([
+      ["Fig 5a", "5", "a"],
+      ["Figure 3-2", "3-2", ""],
+    ]);
+    expect(refs("Table 2 lists")).toEqual([["Table 2", "2", ""]]);
+    expect(refs("Fig 1.19B) further")).toEqual([["Fig 1.19B", "1.19", "B"]]);
+  });
+});
+
+describe("CAPTION_RE", () => {
+  it("numbers a figure without its capital panel letters", () => {
+    expect(CAPTION_RE.exec("Fig. 1.32A Full smile")?.[2]).toBe("1.32");
+    expect(CAPTION_RE.exec("Fig 2.4A–C Views")?.[2]).toBe("2.4");
+    expect(CAPTION_RE.exec("Fig 5a Detail")?.[2]).toBe("5a");
+    expect(CAPTION_RE.exec("Figure 1-1 Collimation")?.[2]).toBe("1-1");
   });
 });

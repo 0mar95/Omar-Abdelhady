@@ -273,10 +273,13 @@ export function linkReferences(blocks: Block[], pages: PageInfo[]): void {
         const at = m.index ?? 0;
         let piece: Span | null = null;
         if (m[1]) {
-          const key = xrefKey(m[1], m[2]);
-          if (keys.has(key)) piece = { ...s, text: m[0], xref: key };
-        } else if (m[4]) {
-          const page = labelToPage.get(m[4]);
+          // The whole figure ("Fig 1-32"); a figure keyed by its panel ("Fig 5a") when the book numbers them so.
+          const whole = xrefKey(m[1], m[2]);
+          const panel = m[3] && /^[a-z]$/i.test(m[3]) ? xrefKey(m[1], m[2] + m[3].toLowerCase()) : null;
+          const key = keys.has(whole) ? whole : panel && keys.has(panel) ? panel : null;
+          if (key) piece = { ...s, text: m[0], xref: key };
+        } else if (m[5]) {
+          const page = labelToPage.get(m[5]);
           if (page !== undefined) piece = { ...s, text: m[0], pageRef: page };
         }
         if (!piece) continue;

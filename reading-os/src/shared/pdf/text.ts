@@ -94,14 +94,22 @@ export function parseCitation(s: string): number[] | null {
 }
 
 /** Matches "Fig 1-1", "Figure 3.2", "Table 2-4", "Box 5-3" and returns a normalized key. */
-export const XREF_RE = /\b(Fig(?:ure)?s?\.?|Tables?|Box(?:es)?)\s*(\d+\s?[-–.]\s?\d+[a-z]?|\d+[a-z]?)\b/g;
+/**
+ * A figure, table or box reference: "Fig 1-2", "Figure 3.2", "Fig. 1.32A–C",
+ * "Fig 5a", "Table 2-1". Groups: kind word, number, panel letters (optional).
+ * The panel letters (upper or lower case, ranges like "A–C") are kept in the
+ * link's text but not in the key: the link goes to the whole figure.
+ */
+export const XREF_RE = /\b(Fig(?:ure)?s?\.?|Tables?|Box(?:es)?)\s*(\d+(?:\s?[-–.]\s?\d+)?)((?:[A-Za-z](?![a-z]))(?:\s?[-–,]\s?[A-Za-z](?![a-z]))*)?(?![\w])/g;
 
 export function xrefKey(kindWord: string, num: string): string {
   const k = /^fig/i.test(kindWord) ? "Fig" : /^tab/i.test(kindWord) ? "Table" : "Box";
   return `${k} ${num.replace(/\s/g, "").replace(/[–.]/g, "-")}`;
 }
 
-export const CAPTION_RE = /^(Fig(?:ure)?\.?|FIG(?:URE)?\.?|Table|TABLE|Box|BOX)\s*(\d+\s?[-–.]\s?\d+[a-z]?|\d+[a-z]?)\b\s*(\(cont(?:inued|'d|\.)?\))?/;
+// Capital panel letters after the number ("Fig. 1.32A", "Fig 2.4A–C") belong to
+// the same figure: matched, but not part of its number.
+export const CAPTION_RE = /^(Fig(?:ure)?\.?|FIG(?:URE)?\.?|Table|TABLE|Box|BOX)\s*(\d+\s?[-–.]\s?\d+[a-z]?|\d+[a-z]?)(?:[A-Z](?:\s?[-–,]\s?[A-Z])*)?(?![\w])\s*(\(cont(?:inued|'d|\.)?\))?/;
 
 export function countWords(s: string): number {
   return (s.match(/\S+/g) ?? []).length;
