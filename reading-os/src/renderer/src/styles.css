@@ -1447,13 +1447,14 @@ button {
 
 /* Library: Review today. */
 .review-panel {
-  padding: 1.1rem 1.2rem 1.15rem;
+  padding: 1.6rem 1.6rem 1.5rem;
   border-radius: 6px;
   background: var(--card);
   border: 1px solid var(--rule);
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
+  justify-content: center;
+  gap: 0.6rem;
 }
 .review-panel p {
   margin: 0;
@@ -1477,6 +1478,13 @@ button {
   font-weight: 400;
   font-style: italic;
   color: var(--ink-2);
+}
+.review-panel .headline {
+  font-family: var(--title-font);
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--ink);
 }
 .review-panel .from {
   font-size: 13px;

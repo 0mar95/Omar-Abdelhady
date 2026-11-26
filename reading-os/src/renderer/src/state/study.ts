@@ -162,8 +162,15 @@ export interface DueItem {
 
 /** Everything due now in these books, the most overdue first. */
 export async function dueAcross(books: { id: string; title: string }[]): Promise<DueItem[]> {
+  return (await overview(books)).due;
+}
+
+/** What's due now, how many questions there are in all, and when the next one comes due. */
+export async function overview(books: { id: string; title: string }[]): Promise<{ due: DueItem[]; total: number; next: number | null }> {
   const now = Date.now();
   const out: DueItem[] = [];
+  let total = 0;
+  let next: number | null = null;
   for (const b of books) {
     const cur = useStudy.getState();
     const saved = cur.bookId === b.id ? { questions: cur.questions, reviews: cur.reviews } : await platform.stateGet<Saved>(`study:${b.id}`);
@@ -171,10 +178,13 @@ export async function dueAcross(books: { id: string; title: string }[]): Promise
     const reviews = upgrade(saved.reviews);
     for (const q of sound(saved.questions)) {
       const card = reviews[q.id];
-      if (card && card.due <= now) out.push({ bookId: b.id, bookTitle: b.title, q, card });
+      if (!card) continue;
+      total++;
+      if (card.due <= now) out.push({ bookId: b.id, bookTitle: b.title, q, card });
+      else if (next === null || card.due < next) next = card.due;
     }
   }
-  return out.sort((a, b) => a.card.due - b.card.due);
+  return { due: out.sort((a, b) => a.card.due - b.card.due), total, next };
 }
 
 /** Grades a question of any book (the open one or one on the shelf). */

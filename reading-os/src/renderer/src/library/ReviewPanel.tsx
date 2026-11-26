@@ -4,18 +4,25 @@
 import { useEffect, useState } from "react";
 import type { LibraryEntry } from "../state/library";
 import { useReader } from "../state/reader";
-import { dueAcross, gradeIn, streak, type DueItem } from "../state/study";
+import { gradeIn, overview, streak, type DueItem } from "../state/study";
 import { ReviewSession, type ReviewItem } from "../reader/Study";
 
 export function ReviewPanel({ entries }: { entries: LibraryEntry[] }) {
   const [due, setDue] = useState<DueItem[] | null>(null);
+  const [total, setTotal] = useState(0);
+  const [next, setNext] = useState<number | null>(null);
   const [days, setDays] = useState(0);
   const [open, setOpen] = useState(false);
   const [tick, setTick] = useState(0);
   const key = entries.map((e) => e.id).join(",");
   useEffect(() => {
     let live = true;
-    void dueAcross(entries.map((e) => ({ id: e.id, title: e.title }))).then((d) => live && setDue(d));
+    void overview(entries.map((e) => ({ id: e.id, title: e.title }))).then((o) => {
+      if (!live) return;
+      setDue(o.due);
+      setTotal(o.total);
+      setNext(o.next);
+    });
     void streak().then((s) => live && setDays(s.days));
     return () => {
       live = false;
@@ -42,8 +49,18 @@ export function ReviewPanel({ entries }: { entries: LibraryEntry[] }) {
             Start review
           </button>
         </>
+      ) : total ? (
+        <>
+          <p className="headline">All caught up</p>
+          <p className="from">
+            {total} {total === 1 ? "question" : "questions"} in your memory{next ? `; the next comes back ${when(next)}` : ""}. Each returns just before you’d forget it.
+          </p>
+        </>
       ) : (
-        <p className="from">All caught up. Questions from “Check yourself” come back here just before you’d forget them.</p>
+        <>
+          <p className="headline">Study as you read</p>
+          <p className="from">At the end of each section, “Check yourself” asks a few questions from the text. They come back here, spaced out, so they stick.</p>
+        </>
       )}
       {days > 0 && <p className="streak">{days === 1 ? "1 day" : `${days} days`} in a row</p>}
       {open && (
@@ -64,4 +81,12 @@ export function ReviewPanel({ entries }: { entries: LibraryEntry[] }) {
       )}
     </section>
   );
+}
+
+/** "later today", "tomorrow", "in 5 days". */
+function when(t: number): string {
+  const days = Math.round((t - Date.now()) / 86_400_000);
+  if (days <= 0) return "later today";
+  if (days === 1) return "tomorrow";
+  return `in ${days} days`;
 }

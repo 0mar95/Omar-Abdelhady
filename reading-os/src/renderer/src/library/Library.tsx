@@ -72,40 +72,31 @@ export function Library({ onOpenFile }: { onOpenFile(): void }) {
             <EmptyShelf onOpenFile={onOpenFile} />
           ) : (
             <>
-              {current && (
-                <section aria-label="Continue reading" className="mb-10 flex flex-wrap gap-6">
-                  <ContinueCard e={current} onOpen={() => void openEntry(current)} />
-                  <div className="flex w-full flex-col gap-2.5 lg:w-[300px]">
-                    <ReviewPanel entries={entries} />
-                    {also.length > 0 && <>
-                      <div className="px-1 pt-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-3">Also in progress</div>
-                      {also.map((e) => (
-                        <button
-                          key={e.id}
-                          type="button"
-                          onClick={() => void openEntry(e)}
-                          className="flex items-center gap-3.5 border-t border-rule py-3 text-left hover:text-[var(--accent)]"
-                        >
-                          <Cover e={e} className="h-14 w-10 shrink-0" mini />
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[14.5px] font-semibold text-ink font-title">
-                              {e.title}
-                            </span>
-                            <span className="mt-0.5 block truncate text-[12px] text-ink-3">
-                              {FORMAT_NAMES[fmt(e)]} · {Math.round(e.progress * 100)}%
-                            </span>
-                            <Progress value={e.progress} className="mt-2" />
+              <section aria-label="Today" className={`mb-12 grid items-stretch gap-8 ${current ? "lg:grid-cols-[minmax(0,1fr)_320px]" : "lg:grid-cols-[minmax(0,420px)]"}`}>
+                {current && <ContinueCard e={current} onOpen={() => void openEntry(current)} />}
+                <ReviewPanel entries={entries} />
+              </section>
+
+              {also.length > 0 && (
+                <section aria-label="Also in progress" className="mb-14">
+                  <div className="mb-4 flex items-baseline gap-3 border-b border-rule pb-2.5">
+                    <h2 className="m-0 text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-3">Also in progress</h2>
+                  </div>
+                  <div className="grid gap-x-8 gap-y-5 [grid-template-columns:repeat(auto-fill,minmax(250px,1fr))]">
+                    {also.map((e) => (
+                      <button key={e.id} type="button" onClick={() => void openEntry(e)} className="group flex items-center gap-4 text-left">
+                        <Cover e={e} className="h-[78px] w-[54px] shrink-0 transition group-hover:-translate-y-0.5" mini />
+                        <span className="min-w-0 flex-1">
+                          <span className="line-clamp-2 text-[15.5px] font-semibold leading-snug text-ink font-title group-hover:text-[var(--accent)]">{e.title}</span>
+                          <span className="mt-1 block truncate text-[12px] text-ink-3">
+                            {e.chapterTitle ? e.chapterTitle : FORMAT_NAMES[fmt(e)]} · {Math.round(e.progress * 100)}%
                           </span>
-                        </button>
-                      ))}
-                    </>}
+                          <Progress value={e.progress} className="mt-2" />
+                        </span>
+                      </button>
+                    ))}
                   </div>
                 </section>
-              )}
-              {!current && (
-                <div className="mb-10 max-w-[420px]">
-                  <ReviewPanel entries={entries} />
-                </div>
               )}
 
               <section aria-label="Your library">
@@ -248,27 +239,28 @@ function AiPill() {
 // ---------- continue reading ----------
 
 function ContinueCard({ e, onOpen }: { e: LibraryEntry; onOpen(): void }) {
-  const chapter = e.chapterTitle ? `${e.chapterNumber ? `Chapter ${e.chapterNumber} · ` : ""}${e.chapterTitle}` : null;
+  const title = e.chapterTitle && !/^(chapter\s*)?\d+$/i.test(e.chapterTitle.trim()) ? e.chapterTitle : null;
+  const chapter = title ? `${e.chapterNumber ? `Chapter ${e.chapterNumber} · ` : ""}${title}` : e.chapterNumber ? `Chapter ${e.chapterNumber}` : null;
   return (
-    <div className="flex min-w-[320px] flex-1 items-end gap-8 self-start py-2">
-      <button type="button" onClick={onOpen} aria-label={`Open ${e.title}`} className="hidden shrink-0 sm:block">
-        <Cover e={e} className="h-[214px] w-[150px] shadow-[inset_5px_0_0_rgb(0_0_0/0.22),0_18px_30px_rgb(60_40_20/0.25)]" />
+    <div className="flex min-w-0 items-center gap-9 rounded-md border border-rule px-7 py-7 sm:px-9">
+      <button type="button" onClick={onOpen} aria-label={`Open ${e.title}`} className="hidden shrink-0 transition hover:-translate-y-0.5 sm:block">
+        <Cover e={e} className="h-[236px] w-[165px] shadow-[inset_5px_0_0_rgb(0_0_0/0.18),0_20px_34px_rgb(60_40_20/0.22)]" />
       </button>
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--accent)]">Continue reading</div>
-        <h2 className="m-0 mt-2 text-[36px] font-semibold leading-[1.08] tracking-[-0.015em] text-ink font-title">{e.title}</h2>
-        {chapter && <div className="mt-2 truncate font-title text-[18px] italic text-ink-2">{chapter}</div>}
-        {!chapter && e.author && <div className="mt-1 truncate text-[13.5px] text-ink-3">{e.author}</div>}
-        <div className="mt-auto flex flex-wrap items-center gap-x-5 gap-y-3 pt-6">
-          <button type="button" onClick={onOpen} className="h-[42px] rounded-full bg-[var(--accent)] px-6 text-[14px] font-medium text-paper hover:brightness-110">
+        <h2 className="m-0 mt-2.5 line-clamp-3 text-[38px] font-semibold leading-[1.06] tracking-[-0.015em] text-ink font-title">{e.title}</h2>
+        {e.author && <div className="mt-2 truncate text-[13.5px] text-ink-3">{e.author}</div>}
+        {chapter && <div className="mt-3 truncate font-title text-[18px] italic text-ink-2">{chapter}</div>}
+        <div className="mt-7 flex flex-wrap items-center gap-x-6 gap-y-3">
+          <button type="button" onClick={onOpen} className="h-[44px] rounded-full bg-[var(--accent)] px-6 text-[14px] font-medium text-paper hover:brightness-110">
             Resume{e.pageLabel && fmt(e) === "pdf" ? ` · page ${e.pageLabel}` : ""}
           </button>
-          <div className="min-w-[200px] max-w-[300px] flex-1">
+          <div className="min-w-[200px] max-w-[320px] flex-1">
             <div className="flex justify-between gap-3 text-[12px] text-ink-3">
               <span>{Math.round(e.progress * 100)}% of the book</span>
               {e.minutesLeft !== undefined && <span>{e.minutesLeft > 0 ? `${e.minutesLeft} min left in chapter` : "End of chapter"}</span>}
             </div>
-            <Progress value={e.progress} className="mt-1.5 h-1" />
+            <Progress value={e.progress} className="mt-1.5 h-[3px]" />
           </div>
         </div>
       </div>
@@ -340,7 +332,7 @@ function ShelfBook({ e, onOpen }: { e: LibraryEntry; onOpen(): void }) {
       </div>
       <Progress value={e.progress} />
       <div className="text-[12px] leading-snug text-ink-3">
-        <span className="line-clamp-2 font-medium text-ink-2">{e.title}</span>
+        <span className="mb-0.5 line-clamp-2 font-title text-[14.5px] font-semibold leading-snug text-ink">{e.title}</span>
         {fresh ? "New" : finished ? "Finished" : `${pct}%`} · {fmt(e) === "pdf" ? `${e.pageCount} pages` : readingTime(e.words)} · {ago(e.openedAt)}
       </div>
     </div>
@@ -372,7 +364,7 @@ function Cover({ e, className, mini }: { e: LibraryEntry; className: string; min
   const shape = "rounded-[3px_7px_7px_3px] shadow-[inset_4px_0_0_rgb(0_0_0/0.16),0_6px_14px_rgb(58_47_35/0.16)]";
   if (url)
     return (
-      <div className={`${className} ${shape} overflow-hidden bg-white`}>
+      <div className={`${className} ${shape} relative overflow-hidden bg-white after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:shadow-[inset_0_0_0_1px_rgb(0_0_0/0.08)]`}>
         <img src={url} alt="" className="h-full w-full object-cover" draggable={false} />
       </div>
     );
