@@ -6,6 +6,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { nextLabel, type Card, type Grade } from "../../../shared/study/fsrs";
 import type { QuestionKind } from "../../../shared/study/questions";
+import { useParts } from "../state/parts";
 import { useReader } from "../state/reader";
 import { useStudy, type Question } from "../state/study";
 import { IconCheckCircle, IconX } from "../ui/icons";
@@ -37,6 +38,8 @@ export function SectionQuiz({ headingId }: { headingId: string }) {
   const stage = useStudy((s) => s.stage);
   const error = useStudy((s) => s.error);
   const [open, setOpen] = useState(false);
+  // First answers this sitting: passing the quiz finishes the part.
+  const [sitting] = useState(() => new Map<string, boolean>());
   const questions = useMemo(() => all.filter((q) => q.sectionId === headingId), [all, headingId]);
   const title = book.blocks[ix.byId.get(headingId) ?? 0];
   const unit = ix.units.units.find((u) => u.id === headingId);
@@ -80,7 +83,12 @@ export function SectionQuiz({ headingId }: { headingId: string }) {
             q={q}
             n={i + 1}
             card={reviews[q.id]}
-            onGrade={(g, before, first) => void useStudy.getState().grade(q.id, g, before, first)}
+            onGrade={(g, before, first) => {
+              void useStudy.getState().grade(q.id, g, before, first);
+              if (first) sitting.set(q.id, g > 1);
+              const right = [...sitting.values()].filter(Boolean).length;
+              if (sitting.size === questions.length && right >= Math.ceil(questions.length * 0.6)) useParts.getState().markDone(headingId, "quiz");
+            }}
             onSource={q.blockId ? () => useReader.getState().jumpTo({ blockId: q.blockId! }) : undefined}
           />
         ))}

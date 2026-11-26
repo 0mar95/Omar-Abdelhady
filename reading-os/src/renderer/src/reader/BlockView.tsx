@@ -15,6 +15,8 @@ import type { TermMatch } from "../../../shared/glossary/extract";
 import { imageUrl } from "../formats";
 import { renderRegion } from "../pdf";
 import { useGlossary } from "../state/glossary";
+import { useParts } from "../state/parts";
+import { PartPreview } from "./Parts";
 import { unitLabel, useReader } from "../state/reader";
 import { useSettings } from "../state/settings";
 import { IconBulb, IconImage, IconSparkle } from "../ui/icons";
@@ -409,9 +411,11 @@ export function TitlePage({ b }: { b: Pick<TitlePageBlock, "title" | "subtitle" 
 export function ChapterList() {
   const book = useReader((s) => s.book)!;
   const ix = useReader((s) => s.ix)!;
+  const done = useParts((p) => p.done);
   const { units } = ix.units;
   const reads = units.filter((u) => u.kind === "read");
   if (reads.length < 2) return null;
+  const finished = reads.filter((u) => done[u.id]).length;
   const go = (id: string) => useReader.getState().jumpTo({ blockId: id });
   // Parts of one chapter are listed together under it.
   const groups: ReadingUnit[][] = [];
@@ -427,29 +431,38 @@ export function ChapterList() {
   return (
     <nav aria-label="Contents" className="book-contents mb-16 font-ui">
       <h2 className="!mt-0">Contents</h2>
+      {finished > 0 && (
+        <p className="finished">
+          {finished} of {reads.length} {reads.some((u) => u.part) ? "chapters and parts" : "chapters"} done
+          <span className="bar" aria-hidden>
+            <span style={{ width: `${(finished / reads.length) * 100}%` }} />
+          </span>
+        </p>
+      )}
       {front && <p className="around">Before the book · folded away</p>}
       <ol>
         {groups.map((g) => {
           const first = g[0];
           const total = g.reduce((n, u) => n + u.minutes, 0);
+          const allDone = g.every((u) => done[u.id]);
           const sections = g.length === 1 ? sectionsOf(first) : [];
           return (
             <li key={first.id}>
-              <button type="button" className="chapter-row" onClick={() => go(first.id)}>
+              <button type="button" className={`chapter-row ${allDone ? "is-done" : ""}`} onClick={() => go(first.id)}>
                 <span className="num">{first.number ?? unitLabel(ix.units, first)}</span>
                 <span className="title">
                   <Title text={first.chapterTitle ?? first.title} />
                 </span>
-                <span className="time">{total} min</span>
+                <span className="time">{allDone ? <Tick /> : `${total} min`}</span>
               </button>
               {g.length > 1 && (
                 <ol className="parts">
                   {g.map((u) => (
                     <li key={u.id}>
-                      <button type="button" onClick={() => go(u.id)}>
+                      <button type="button" className={done[u.id] ? "is-done" : ""} onClick={() => go(u.id)}>
                         <span className="part">Part {u.part?.index}</span>
                         <Title text={u.part?.index === 1 ? (sectionsOf(u)[0]?.title ?? u.title) : u.title} />
-                        <span className="time">{u.minutes} min</span>
+                        <span className="time">{done[u.id] ? <Tick /> : `${u.minutes} min`}</span>
                       </button>
                     </li>
                   ))}
@@ -472,6 +485,14 @@ export function ChapterList() {
       </ol>
       {back && <p className="around">After the book · {back.title === "After the book" ? "references and back pages, folded away" : back.title}</p>}
     </nav>
+  );
+}
+
+function Tick() {
+  return (
+    <span className="tick" aria-label="Done" title="Done">
+      ✓
+    </span>
   );
 }
 
@@ -534,7 +555,9 @@ function ChapterOpener({ b }: { b: HeadingBlock }) {
           </ul>
         </aside>
       )}
-      {o && o.sections.length > 0 && (
+      {/* A chapter read in parts previews its first part; a whole chapter lists its sections, then its key terms. */}
+      {unit && part && <PartPreview unit={unit} />}
+      {!part && o && o.sections.length > 0 && (
         <nav className="in-chapter" aria-label="In this chapter">
           <div className="label">In this chapter</div>
           <ol>
@@ -548,6 +571,7 @@ function ChapterOpener({ b }: { b: HeadingBlock }) {
           </ol>
         </nav>
       )}
+      {unit && !part && <PartPreview unit={unit} sections={!o?.sections.length} />}
     </header>
   );
 }

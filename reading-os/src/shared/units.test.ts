@@ -63,3 +63,21 @@ describe("reading units", () => {
     expect(u.units.some((x) => x.title === "Interlude")).toBe(false);
   });
 });
+
+describe("unitPreview", () => {
+  it("lists a part's sections and the bold terms it introduces", async () => {
+    const { unitPreview } = await import("./preview.ts");
+    const R = { x: 0, y: 0, w: 1, h: 1 };
+    const blocks = [
+      { kind: "heading", id: "h1", page: 0, rect: R, chapter: 0, level: 1, text: "Pain" },
+      { kind: "heading", id: "h2", page: 0, rect: R, chapter: 0, level: 2, text: "Nociception" },
+      { kind: "paragraph", id: "p1", page: 0, rect: R, chapter: 0, spans: [{ text: "Pain felt from a light touch, which would not normally hurt, is called " }, { text: "central allodynia", b: true }, { text: " and " }, { text: "Note", b: true }] },
+      { kind: "heading", id: "h3", page: 0, rect: R, chapter: 0, level: 2, text: "Sensitization" },
+      { kind: "paragraph", id: "p2", page: 0, rect: R, chapter: 0, spans: [{ text: "More about it, at length, so that this line reads as running text: " }, { text: "central allodynia.", b: true }] },
+    ];
+    const book = { blocks } as never;
+    const p = unitPreview(book, { id: "h1", kind: "read", start: 0, end: 5, title: "Pain", minutes: 1 }, []);
+    expect(p.sections.map((s) => s.text)).toEqual(["Nociception", "Sensitization"]);
+    expect(p.terms.map((t) => t.text)).toEqual(["central allodynia"]);
+  });
+});

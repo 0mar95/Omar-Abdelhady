@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Block, HeadingBlock, ParagraphBlock } from "./model.ts";
-import { normalizeStructure, numberChapterHeadings, placeFigures, splitGluedHeadings, tidyHeading } from "./normalize.ts";
+import { normalizeStructure, numberChapterHeadings, placeFigures, retitleRepeatedChapters, splitGluedHeadings, tidyHeading } from "./normalize.ts";
 import { dropStrayNumbers } from "./pdf/analyze.ts";
 
 const R = { x0: 0, y0: 0, x1: 0, y1: 0 };
@@ -424,5 +424,41 @@ describe("glued and labelled headings", () => {
     const b = [{ kind: "heading", id: "c", level: 1, text: "Chapter 1 Introductory Explanation of Masticatory Function", chapter: 0, page: 0, rect }] as Block[];
     const out = numberChapterHeadings(b);
     expect(out[0]).toMatchObject({ number: "1", text: "Introductory Explanation of Masticatory Function" });
+  });
+});
+
+describe("retitleRepeatedChapters", () => {
+  it("names a chapter printed with an earlier chapter's title from its opening", () => {
+    const blocks: Block[] = [
+      { ...h("General Assessment of the Patient"), number: "2" },
+      p("Text."),
+      { ...h("General Assessment of the Patient"), number: "4" },
+      p("This chapter reviews both vascular and nonvascular intracranial sources of pain, many of which are serious."),
+    ];
+    retitleRepeatedChapters(blocks);
+    expect((blocks[0] as HeadingBlock).text).toBe("General Assessment of the Patient");
+    expect((blocks[2] as HeadingBlock).text).toBe("Vascular and Nonvascular Intracranial Sources of Pain");
+    expect((blocks[2] as HeadingBlock).printed).toBe("General Assessment of the Patient");
+  });
+  it("leaves a repeated title alone when the chapter doesn't say what it covers", () => {
+    const blocks: Block[] = [h("Exercises"), p("One."), h("Exercises"), p("Two.")];
+    retitleRepeatedChapters(blocks);
+    expect((blocks[2] as HeadingBlock).text).toBe("Exercises");
+  });
+});
+
+describe("settleChapterNumbers", () => {
+  it("numbers the chapters around the few that carry a number, and capitalizes", async () => {
+    const { settleChapterNumbers } = await import("./normalize.ts");
+    const blocks: Block[] = [h("Preface"), h("Introduction to Dental Anatomy"), h("Development of the Teeth"), h("3. Primary Teeth"), h("the Permanent Incisors"), h("5. Canines"), h("Appendix A. Tooth Traits")];
+    settleChapterNumbers(blocks);
+    const got = blocks.map((b) => `${(b as HeadingBlock).number ?? "-"} ${(b as HeadingBlock).text}`);
+    expect(got).toEqual(["- Preface", "1 Introduction to Dental Anatomy", "2 Development of the Teeth", "3 Primary Teeth", "4 The Permanent Incisors", "5 Canines", "- Appendix A. Tooth Traits"]);
+  });
+  it("leaves the numbers alone when they don't match the chapters' places", async () => {
+    const { settleChapterNumbers } = await import("./normalize.ts");
+    const blocks: Block[] = [h("Alpha"), h("3 Beta"), h("Gamma"), h("9 Delta")];
+    settleChapterNumbers(blocks);
+    expect(blocks.map((b) => (b as HeadingBlock).number ?? "-")).toEqual(["-", "3", "-", "9"]);
   });
 });

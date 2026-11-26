@@ -8,6 +8,7 @@ import { contextFor, useCards, type Card } from "../ai";
 import { paintHighlights, useHighlights, type Highlight } from "../state/highlights";
 import { useNotes } from "../state/notes";
 import { quizSections, useStudy } from "../state/study";
+import { PartPreview, PartSummaryCard } from "./Parts";
 import { SectionQuiz } from "./Study";
 import { unitLabel, useReader } from "../state/reader";
 import type { ReadingUnit } from "../../../shared/units";
@@ -271,7 +272,12 @@ const BlockWithCards = memo(function BlockWithCards({
       <BlockView b={block} flow={flow} marks={marks} />
       {!gutter && <InlineNote note={note} />}
       {cards?.map((c) => <InlineCard key={c.id} card={c} onRegenerate={onRegenerate} />)}
-      {quiz && <SectionQuiz headingId={quiz} />}
+      {quiz && (
+        <>
+          <PartSummaryCard unitId={quiz} />
+          <SectionQuiz headingId={quiz} />
+        </>
+      )}
     </>
   );
 });
@@ -340,6 +346,7 @@ function UnitStart({ unit }: { unit: ReadingUnit }) {
         {unit.part ? `Part ${unit.part.index} of ${unit.part.of}${unit.chapterTitle ? ` · ${unit.chapterTitle}` : ""}` : "Reading"}
         {` · ${unit.minutes} min`}
       </span>
+      <PartPreview unit={unit} />
     </div>
   );
 }

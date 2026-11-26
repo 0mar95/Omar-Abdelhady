@@ -3,7 +3,7 @@
 // the page and rectangle it came from so the original page can always be shown.
 
 /** Bump whenever extraction output changes so cached books are re-extracted. */
-export const EXTRACTOR_VERSION = 24;
+export const EXTRACTOR_VERSION = 25;
 
 /** Rectangle in PDF points, origin at the top-left of the page. */
 export interface Rect {
@@ -48,6 +48,8 @@ export interface HeadingBlock extends BlockBase {
   number?: string;
   /** A chapter's authors, as printed under its title. */
   byline?: string;
+  /** The title as the book printed it, when Kenning had to name the chapter itself. */
+  printed?: string;
 }
 
 export interface ParagraphBlock extends BlockBase {

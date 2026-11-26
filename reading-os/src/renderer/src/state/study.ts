@@ -145,7 +145,7 @@ export const useStudy = create<StudyStore>((set, get) => ({
 }));
 
 /** Up to `max` characters drawn evenly from every part of a long text, so a chapter quiz covers all of it. */
-function sample(text: string, max: number): string {
+export function sample(text: string, max: number): string {
   if (text.length <= max) return text;
   const parts = text.split(/\n\n+/);
   const share = Math.max(200, Math.floor(max / parts.length));
@@ -296,7 +296,8 @@ export function quizSections(book: BookDoc, ix: BookIndex): Map<string, string> 
   const ends = new Map<string, number>();
   const readable = (k: number) => {
     const b = book.blocks[k];
-    return b.kind === "paragraph" || b.kind === "list" || b.kind === "callout" || b.kind === "box";
+    // The part's own tables and figures come before its quiz; its reference list after.
+    return b.kind === "paragraph" || b.kind === "list" || b.kind === "callout" || b.kind === "box" || b.kind === "table" || b.kind === "figure";
   };
   for (const u of ix.units.units) {
     if (u.kind !== "read") continue;

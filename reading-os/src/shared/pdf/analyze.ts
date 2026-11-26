@@ -11,7 +11,7 @@ import {
   type TocEntry,
 } from "../model.ts";
 import { applyOutline, organizeOpening, settleChapters, type OutlineItem } from "../structure.ts";
-import { bookTitle, chapterBylines, cleanTitle, dropChapterContents, normalizeStructure, numberChapterHeadings, placeFigures, recoverContents } from "../normalize.ts";
+import { bookTitle, chapterBylines, cleanTitle, dropChapterContents, normalizeStructure, numberChapterHeadings, placeFigures, recoverContents, retitleRepeatedChapters, settleChapterNumbers } from "../normalize.ts";
 import { BlockBuilder, colFor, type HeadingStyles, type Item } from "./blocks.ts";
 import { detectLayout, dominantLayout, findFurniture, fitLayout, lineRect, readingOrder, splitAtGutter, type PageLayout } from "./layout.ts";
 import { buildLines, fontStats, lineFromRuns, removeNoise, type FontStats, type Line } from "./lines.ts";
@@ -96,6 +96,8 @@ export function analyzeBook(raw: RawPage[], meta: BookMeta, startedAt = Date.now
   blocks = dropChapterContents(chapterBylines(blocks));
   blocks = organizeOpening(blocks);
   settleChapters(blocks);
+  retitleRepeatedChapters(blocks);
+  settleChapterNumbers(blocks, meta.title);
   linkReferences(blocks, pageInfos);
   blocks = placeFigures(blocks);
   const chapters = assignChapters(blocks);

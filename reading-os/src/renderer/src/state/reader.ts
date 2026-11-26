@@ -12,6 +12,7 @@ import { loadOrConvert, setBookFiles } from "../formats";
 import { bookIdFor, loadOrExtract, openPdf } from "../pdf";
 import { platform } from "../platform";
 import { useLibrary, type LibraryEntry } from "./library";
+import { useParts } from "./parts";
 import { setGlossaryContext, useGlossary } from "./glossary";
 import { reportPosition, useNotes } from "./notes";
 import { useSettings } from "./settings";
@@ -177,6 +178,8 @@ export const useReader = create<ReaderStore>((set, get) => ({
       setBookFiles(files);
       void ensureCover(book, doc);
       const ix = indexBook(book);
+      lastUnit = -1;
+      await useParts.getState().load(id);
       const start = entry.position && ix.byId.has(entry.position) ? entry.position : book.blocks[0]?.id;
       // Coming back mid-book after a while: offer a recap of what was read.
       const resuming = !!existing?.position && start === existing.position && (ix.byId.get(start) ?? 0) > 0 && existing.progress > 0.002;
@@ -252,6 +255,7 @@ export const useReader = create<ReaderStore>((set, get) => ({
     if (i === undefined) return;
     set({ currentBlock: blockId, currentPage: book.blocks[i].page });
     reportPosition(entry.id, i);
+    finishedParts(ix, i);
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       const progress = ix.totalWords ? Math.min(1, ix.wordsBefore[i] / ix.totalWords) : 0;
@@ -262,18 +266,48 @@ export const useReader = create<ReaderStore>((set, get) => ({
 
 const WPM = 230;
 
+let lastUnit = -1;
+/**
+ * A part is done when the reader is most of the way through it, or reads on
+ * from it straight into the next one.
+ */
+function finishedParts(ix: BookIndex, i: number): void {
+  const k = ix.units.unitOf[i] ?? -1;
+  const units = ix.units.units;
+  const u = units[k];
+  const parts = useParts.getState();
+  if (k === lastUnit + 1 && units[lastUnit]?.kind === "read") parts.markDone(units[lastUnit].id, "read");
+  lastUnit = k;
+  if (u?.kind !== "read") return;
+  const from = ix.wordsBefore[u.start];
+  const to = u.end < ix.wordsBefore.length ? ix.wordsBefore[u.end] : ix.totalWords;
+  if (to - from > 0 && ix.wordsBefore[i] - from >= 0.85 * (to - from)) parts.markDone(u.id, "read");
+}
+
 /** Chapter, time left in it and printed page at a block, for the library's "Continue reading". */
-export function whereAt(book: BookDoc, ix: BookIndex, i: number): { chapterTitle?: string; chapterNumber?: string; minutesLeft: number; pageLabel?: string } {
+export function whereAt(
+  book: BookDoc,
+  ix: BookIndex,
+  i: number,
+): { chapterTitle?: string; chapterNumber?: string; nextUp?: boolean; partsDone?: number; partsTotal?: number; minutesLeft: number; pageLabel?: string } {
   const b = book.blocks[i];
   // Kenning's own chapter (unit) at this point of the book.
   const u = ix.units.units[ix.units.unitOf[Math.max(0, Math.min(i, book.blocks.length - 1))] ?? 0];
   const end = Math.min(u?.end ?? book.blocks.length, book.blocks.length);
   const left = (end < book.blocks.length ? ix.wordsBefore[end] : ix.totalWords) - ix.wordsBefore[i];
-  const sameAsBook = u?.title?.trim().toLowerCase() === book.title.trim().toLowerCase();
+  const reads = ix.units.units.filter((x) => x.kind === "read");
+  const done = useParts.getState().done;
+  // A part already finished points on to the next one still to read.
+  const here = u && done[u.id] ? (reads.find((x) => x.start > u.start && !done[x.id]) ?? u) : u;
+  const next = here !== u;
+  const sameAsBook = here?.title?.trim().toLowerCase() === book.title.trim().toLowerCase();
   return {
-    chapterTitle: u && u.kind === "read" && !sameAsBook ? u.title : undefined,
-    chapterNumber: u?.kind === "read" ? unitLabel(ix.units, u) : undefined,
-    minutesLeft: Math.max(0, Math.round(left / WPM)),
+    chapterTitle: here && here.kind === "read" && !sameAsBook ? here.title : undefined,
+    chapterNumber: here?.kind === "read" ? unitLabel(ix.units, here) : undefined,
+    nextUp: next || undefined,
+    partsDone: reads.filter((x) => done[x.id]).length,
+    partsTotal: reads.length,
+    minutesLeft: next ? here!.minutes : Math.max(0, Math.round(left / WPM)),
     pageLabel: b ? book.pages[b.page]?.label || undefined : undefined,
   };
 }

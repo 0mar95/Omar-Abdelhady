@@ -8,7 +8,7 @@ import { EXTRACTOR_VERSION, blockText, type Block, type BookDoc, type BookFormat
 import { assignChapters, buildToc, linkReferences } from "../pdf/analyze.ts";
 import { countWords } from "../pdf/text.ts";
 import { organizeOpening, settleChapters } from "../structure.ts";
-import { bookTitle, cleanTitle, normalizeStructure, placeFigures } from "../normalize.ts";
+import { bookTitle, cleanTitle, normalizeStructure, placeFigures, retitleRepeatedChapters, settleChapterNumbers } from "../normalize.ts";
 import { HtmlConverter, normalizeHeadings } from "./html.ts";
 import { textToBlocks } from "./text.ts";
 
@@ -112,6 +112,8 @@ function finish(
   let blocks = normalizeStructure(raw);
   blocks = organizeOpening(blocks);
   settleChapters(blocks);
+  retitleRepeatedChapters(blocks);
+  settleChapterNumbers(blocks, title);
   linkReferences(blocks, pages);
   blocks = placeFigures(blocks);
   const chapters = assignChapters(blocks);

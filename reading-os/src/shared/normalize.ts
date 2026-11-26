@@ -3,6 +3,7 @@
 // shaped alike — numbered chapters, headings that never skip a level, one
 // style of heading text.
 
+import { BACK, FRONT } from "./units.ts";
 import { blockText, spansText, type Block, type ContentsEntry, type HeadingBlock, type Span, type TitlePageBlock } from "./model.ts";
 
 const CHAPTER_LABEL = /^(?:chapter|chap\.|part|book|unit|lesson|module)\s*([0-9]{1,3}|[ivxlc]{1,7}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b[.:—–-]?\s*(.*)$/i;
@@ -306,6 +307,82 @@ export function numberChapterHeadings(blocks: Block[]): Block[] {
   sectionsUnderNumberedChapters(out);
   return out;
 }
+
+/**
+ * A chapter printed with an earlier chapter's title (a publisher's slip, repeated
+ * on its opener, running heads and contents) is named from its own opening:
+ * "This chapter reviews vascular and nonvascular intracranial sources of
+ * orofacial pain, …" → "Vascular and Nonvascular Intracranial Sources of
+ * Orofacial Pain". The printed title is kept in `printed`.
+ */
+export function retitleRepeatedChapters(blocks: Block[]): void {
+  const seen = new Set<string>();
+  blocks.forEach((b, i) => {
+    if (b.kind !== "heading" || b.level !== 1) return;
+    const k = key(b.text);
+    if (!seen.has(k)) return void seen.add(k);
+    for (let j = i + 1; j < blocks.length && j <= i + 8; j++) {
+      const n = blocks[j];
+      if (n.kind === "heading" && n.level <= 2) break;
+      const m = CHAPTER_AIM.exec(blockText(n));
+      if (!m) continue;
+      const words = m[1].replace(/^(?:both|the|all|several|some|various)\s+/i, "").trim().split(/\s+/);
+      if (words.length < 2 || words.length > 12) break;
+      b.printed = b.text;
+      b.text = words.map((w, x) => (x > 0 && SMALL_WORDS.has(w.toLowerCase()) ? w.toLowerCase() : w.charAt(0).toUpperCase() + w.slice(1))).join(" ");
+      return;
+    }
+  });
+}
+
+/**
+ * The book's chapter titles, made consistent: "5. Orofacial Complex" is
+ * chapter 5; a title set in lower case ("the Problem of Universals") starts
+ * with a capital; and when most chapters carry numbers, the ones that lost
+ * theirs (chapter 1 printed without its label, say) get them back — but only
+ * when every numbered chapter agrees with its place in the book.
+ */
+export function settleChapterNumbers(blocks: Block[], bookTitle?: string): void {
+  const tops = blocks.filter((b): b is HeadingBlock => b.kind === "heading" && b.level === 1);
+  // "2 Pathology of Teeth": a bare number in front is the chapter's when several chapters have one.
+  const LEAD = /^(\d{1,3})[.:]?\s+(\p{Lu}.{2,})$/u;
+  const bare = tops.filter((h) => !h.number && LEAD.test(h.text)).length >= 2;
+  for (const h of tops) {
+    if (!h.number) {
+      const m = (bare ? LEAD : /^(\d{1,3})[.:]\s+(\p{Lu}.{2,})$/u).exec(h.text);
+      if (m) {
+        h.number = m[1];
+        h.text = m[2].trim();
+      }
+    }
+    h.text = capitalized(h.text);
+  }
+  const same = (t: string) => !!bookTitle && key(t) === key(bookTitle);
+  const core = tops.filter((h) => !FRONT.test(h.text) && !BACK.test(h.text) && !same(h.text));
+  const numbered = core.filter((h) => h.number && /^\d+$/.test(h.number));
+  // Two numbered chapters that each sit exactly at their place are enough to go by.
+  if (numbered.length < 2 || numbered.length === core.length) return;
+  const offset = Number(numbered[0].number) - core.indexOf(numbered[0]);
+  if (!numbered.every((h) => Number(h.number) - core.indexOf(h) === offset)) return;
+  // Chapters after the last number are only filled while the book keeps counting up to the end.
+  core.forEach((h, k) => {
+    const n = k + offset;
+    if (!h.number && n >= 1) h.number = String(n);
+  });
+}
+
+/** "the Problem of Universals" → "The Problem of Universals"; "color atlas of oral diseases" → "Color Atlas of Oral Diseases"; "APPENDIX" → "Appendix". */
+function capitalized(t: string): string {
+  const words = t.split(" ");
+  if (/^\p{Lu}{4,}$/u.test(t)) return t.charAt(0) + t.slice(1).toLowerCase();
+  if (words.length >= 2 && t === t.toLowerCase() && /\p{L}/u.test(t))
+    return words.map((w, i) => (i > 0 && SMALL_WORDS.has(w) ? w : w.charAt(0).toUpperCase() + w.slice(1))).join(" ");
+  if (/^\p{Ll}/u.test(t) && SMALL_WORDS.has(words[0])) return t.charAt(0).toUpperCase() + t.slice(1);
+  return t;
+}
+
+const CHAPTER_AIM =
+  /\b(?:this|the present) chapter (?:reviews|discusses|covers|describes|focuses on|addresses|examines|presents|explores|outlines|introduces|deals with|considers|summarizes|is about|provides an overview of)\s+([^.,;:()]+?)(?:[.,;:(]| that | which | in (?:detail|depth)\b)/i;
 
 const BACK_MATTER = /^(?:references|bibliography|further reading|index|glossary|appendix|appendices|notes|acknowledg|about the author|abbreviations|answers)/i;
 

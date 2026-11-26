@@ -89,7 +89,7 @@ export function Library({ onOpenFile }: { onOpenFile(): void }) {
                         <span className="min-w-0 flex-1">
                           <span className="line-clamp-2 text-[15.5px] font-semibold leading-snug text-ink font-title group-hover:text-[var(--accent)]">{e.title}</span>
                           <span className="mt-1 block truncate text-[12px] text-ink-3">
-                            {e.chapterTitle ? e.chapterTitle : FORMAT_NAMES[fmt(e)]} · {Math.round(e.progress * 100)}%
+                            {e.chapterTitle ? `${e.nextUp ? "Next: " : ""}${e.chapterTitle}` : FORMAT_NAMES[fmt(e)]} · {Math.round(e.progress * 100)}%
                           </span>
                           <Progress value={e.progress} className="mt-2" />
                         </span>
@@ -240,7 +240,8 @@ function AiPill() {
 
 function ContinueCard({ e, onOpen }: { e: LibraryEntry; onOpen(): void }) {
   const title = e.chapterTitle && !/^(chapter\s*)?\d+$/i.test(e.chapterTitle.trim()) ? e.chapterTitle : null;
-  const chapter = title ? `${e.chapterNumber ? `Chapter ${e.chapterNumber} · ` : ""}${title}` : e.chapterNumber ? `Chapter ${e.chapterNumber}` : null;
+  const where = title ? `${e.chapterNumber ? `Chapter ${e.chapterNumber} · ` : ""}${title}` : e.chapterNumber ? `Chapter ${e.chapterNumber}` : null;
+  const chapter = where && e.nextUp ? `Next: ${where}` : where;
   return (
     <div className="flex min-w-0 items-center gap-9 rounded-md border border-rule px-7 py-7 sm:px-9">
       <button type="button" onClick={onOpen} aria-label={`Open ${e.title}`} className="hidden shrink-0 transition hover:-translate-y-0.5 sm:block">
@@ -257,10 +258,10 @@ function ContinueCard({ e, onOpen }: { e: LibraryEntry; onOpen(): void }) {
           </button>
           <div className="min-w-[200px] max-w-[320px] flex-1">
             <div className="flex justify-between gap-3 text-[12px] text-ink-3">
-              <span>{Math.round(e.progress * 100)}% of the book</span>
-              {e.minutesLeft !== undefined && <span>{e.minutesLeft > 0 ? `${e.minutesLeft} min left in chapter` : "End of chapter"}</span>}
+              <span>{e.partsDone && e.partsTotal ? `${e.partsDone} of ${e.partsTotal} chapters done` : `${Math.round(e.progress * 100)}% of the book`}</span>
+              {e.minutesLeft !== undefined && <span>{e.nextUp ? `${e.minutesLeft} min read` : e.minutesLeft > 0 ? `${e.minutesLeft} min left in chapter` : "End of chapter"}</span>}
             </div>
-            <Progress value={e.progress} className="mt-1.5 h-[3px]" />
+            <Progress value={e.partsDone && e.partsTotal ? e.partsDone / e.partsTotal : e.progress} className="mt-1.5 h-[3px]" />
           </div>
         </div>
       </div>

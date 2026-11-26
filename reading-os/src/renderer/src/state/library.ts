@@ -23,6 +23,11 @@ export interface LibraryEntry {
   chapterNumber?: string;
   minutesLeft?: number;
   pageLabel?: string;
+  /** The reader finished the part they were in: the chapter shown is the next one to read. */
+  nextUp?: boolean;
+  /** Kenning's chapters (and parts) finished, of all of them. */
+  partsDone?: number;
+  partsTotal?: number;
 }
 
 interface LibraryStore {

@@ -42,8 +42,12 @@ const MAX = 40 * WPM; // longer chapters are split
 const MIN_PART = 8 * WPM; // no part shorter than this when splitting
 const TINY = 3 * WPM; // chapters this short join their neighbour
 
-const FRONT = /^(?:preface|foreword|fore\s?word|introduction(?: to (?:this|the) (?:book|edition|volume))?|how to use (?:this|the) book|about (?:this|the) book|about the (?:authors?|editors?|contributors?)|contributors?|list of contributors|acknowledg(?:e)?ments?|dedication|series preface|preface to the .+ edition|notes? (?:on|for) (?:the )?(?:reader|contributors|edition)|abbreviations|list of (?:abbreviations|figures|tables|illustrations)|copyright|contents|table of contents|title page|half[- ]?title|front matter|epigraph|prologue)\b/i;
-const BACK = /^(?:references|bibliography|further reading|suggested readings?|index|subject index|author index|glossary|appendix|appendices|answers?(?: to)?|notes|endnotes|credits|image credits|about the (?:authors?|editors?)|afterword|epilogue|colophon)\b/i;
+// The whole title must be one of these ("Introduction", not "Introduction to Dental Anatomy").
+export const FRONT =
+  /^(?:preface(?: to the .+ edition)?|foreword|fore\s?word|introduction(?: to (?:this|the) (?:book|edition|volume))?|how to use (?:this|the) book|about (?:this|the) book|about the (?:authors?|editors?|contributors?)|(?:list of )?contributors?|acknowledg(?:e)?ments?|dedication|series preface|notes? (?:on|for|to) (?:the )?(?:reader|contributors|edition|students?|instructors?)|(?:list of )?abbreviations|list of (?:figures|tables|illustrations)|copyright|(?:table of )?contents|title page|half[- ]?title|front matter|epigraph|prologue)\s*[.:]?$/i;
+// Back matter: the whole title, or an appendix or index of any name.
+export const BACK =
+  /^(?:(?:references|bibliography|further reading|suggested readings?|glossary|answers(?: to .+)?|notes|endnotes|credits|image credits|about the (?:authors?|editors?)|afterword|epilogue|colophon)\s*[.:]?$|(?:appendix|appendices|index|subject index|author index)\b)/i;
 
 /** Kenning's reading units for a book. `wordsBefore[i]` counts the words read before block i. */
 export function readingUnits(book: BookDoc, wordsBefore: number[], totalWords: number): BookUnits {
