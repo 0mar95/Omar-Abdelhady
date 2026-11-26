@@ -5,7 +5,7 @@ import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
   main: {
-    build: { rollupOptions: { input: { index: resolve(__dirname, "src/main/index.ts") } } },
+    build: { rollupOptions: { input: { index: resolve(__dirname, "src/main/index.ts"), "voice-worker": resolve(__dirname, "src/main/voice-worker.ts") } } },
   },
   preload: {
     build: {

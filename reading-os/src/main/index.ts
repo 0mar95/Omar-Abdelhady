@@ -6,7 +6,7 @@ import type { AiConfig, ChatRequest, DefineRequest, SearchParams } from "../shar
 import { EXTRACTOR_VERSION, type BookDoc } from "../shared/model";
 import { DEFINITION_SCHEMA, LibraryIndex, NOTE_SCHEMA, definitionMessages, noteMessages, type NoteDraft } from "./library";
 import * as ollama from "./ollama";
-import * as voice from "./voice";
+import * as voice from "./voice-host";
 
 // One name everywhere, so settings and the book cache live in the same
 // folder however the app is launched (~/Library/Application Support/Kenning).
@@ -222,7 +222,7 @@ function registerIpc(): void {
   ipcMain.handle("glossary:mentions", (_e, phrases: string[], exclude: string) => library!.mentions(phrases, exclude));
   ipcMain.handle("reader:position", (_e, bookId: string, blockIndex: number) => library?.setPosition(bookId, blockIndex));
   ipcMain.handle("voice:status", () => voice.status());
-  ipcMain.handle("voice:prepare", () => voice.prepare((s) => broadcast("voice:status", s)));
+  ipcMain.handle("voice:prepare", () => voice.prepare());
   ipcMain.handle("voice:speak", (_e, text: string, v: string, speed: number) => voice.speak(text, v, speed));
   ipcMain.on("voice:cancel", () => voice.cancel());
   ipcMain.on("reader:activity", () => {
@@ -253,7 +253,7 @@ void app.whenReady().then(async () => {
     });
   }
   library = openLibrary();
-  voice.configure(path.join(dataDir(), "models"));
+  voice.configure(path.join(dataDir(), "models"), here, (s) => broadcast("voice:status", s));
   registerIpc();
   buildMenu();
   createWindow();
@@ -262,7 +262,10 @@ void app.whenReady().then(async () => {
   });
 });
 
-app.on("will-quit", () => library?.close());
+app.on("will-quit", () => {
+  library?.close();
+  voice.stop();
+});
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();

@@ -47,6 +47,8 @@ interface ListenStore {
   natural: VoiceStatus | null;
   /** Loading the voice for the sentence about to be read. */
   waiting: boolean;
+  /** The page follows the voice; false once you scroll away yourself. */
+  following: boolean;
   at: number;
   queue: Line[];
   error: string | null;
@@ -60,6 +62,8 @@ interface ListenStore {
   getNatural(): Promise<void>;
   /** Loads already-downloaded voices in the background (never downloads). */
   warm(): void;
+  /** Scrolls back to the sentence being read and follows it again. */
+  follow(): void;
 }
 
 
@@ -92,13 +96,13 @@ function queueFrom(book: BookDoc, texts: string[], start: number): Line[] {
   return out;
 }
 
-let token = 0;
-
 /** The voice to read with: the saved choice, or the default. */
 const chosen = () => {
   const v = useListen.getState().voice;
-  return v && NATURAL_VOICES.some((n) => `natural:${n.id}` === v) ? v : DEFAULT_NATURAL;
+  return (v && NATURAL_VOICES.some((n) => `natural:${n.id}` === v) ? v : DEFAULT_NATURAL).slice("natural:".length);
 };
+
+const ready = (n: VoiceStatus | null) => !!n && n.state !== "missing" && n.state !== "error";
 
 export const useListen = create<ListenStore>((set, get) => ({
   active: false,
@@ -107,6 +111,7 @@ export const useListen = create<ListenStore>((set, get) => ({
   voice: null,
   natural: null,
   waiting: false,
+  following: true,
   at: 0,
   queue: [],
   error: null,
@@ -119,47 +124,46 @@ export const useListen = create<ListenStore>((set, get) => ({
     }
     const from = ix.byId.get(fromBlockId ?? currentBlock ?? "") ?? 0;
     const queue = queueFrom(book, ix.texts, from);
-    halt();
-    audio.clear();
+    player.reset();
     // Before the voices are downloaded the bar offers the download; reading starts when it's done.
-    const ready = get().natural && get().natural!.state !== "missing" && get().natural!.state !== "error";
-    set({ active: true, playing: !!ready && queue.length > 0, queue, at: 0, error: queue.length ? null : "Nothing to read from here." });
-    if (ready && queue.length) speak();
+    const go = ready(get().natural) && queue.length > 0;
+    set({ active: true, playing: go, following: true, queue, at: 0, error: queue.length ? null : "Nothing to read from here." });
+    mark();
+    if (go) player.play(0);
   },
   toggle() {
     if (!get().active) return get().start();
     if (get().playing) {
-      halt();
+      player.pause();
       set({ playing: false, waiting: false });
     } else {
       set({ playing: true, error: null });
-      speak();
+      player.resume(get().at);
     }
   },
   skip(by) {
     const at = Math.max(0, Math.min(get().queue.length - 1, get().at + by));
-    halt();
-    set({ at });
-    if (get().playing) speak();
-    else mark();
+    set({ at, following: true });
+    mark();
+    if (get().playing) player.play(at);
+    else player.reset(false);
   },
   stop() {
-    halt();
-    audio.clear();
+    player.reset();
     clearMark();
     set({ active: false, playing: false, waiting: false, queue: [], at: 0 });
   },
   setRate(rate) {
     set({ rate });
     save();
-    audio.clear();
-    if (get().playing) get().skip(0);
+    player.forget();
+    if (get().playing) player.play(get().at);
   },
   setVoice(voice) {
     set({ voice, error: null });
     save();
-    audio.clear();
-    if (get().playing) get().skip(0);
+    player.forget();
+    if (get().playing) player.play(get().at);
   },
   warm() {
     const v = platform.voices;
@@ -173,12 +177,16 @@ export const useListen = create<ListenStore>((set, get) => ({
     const s = await v.prepare();
     set({ natural: s });
     if (s.state !== "ready") return;
-    get().setVoice(chosen());
-    // Start reading with the new voice right away.
+    if (!get().voice) set({ voice: `natural:${chosen()}` });
+    // Start reading right away.
     if (get().active && !get().playing) {
       set({ playing: true, error: null });
-      speak();
+      player.play(get().at);
     }
+  },
+  follow() {
+    set({ following: true });
+    mark(true);
   },
 }));
 
@@ -199,131 +207,184 @@ if (platform.voices) {
   platform.voices.onStatus((natural) => useListen.setState({ natural }));
 }
 
-/** Stops whatever is sounding and drops sentences still being made. */
-function halt() {
-  token++;
-  audio.stopSource();
-  platform.voices?.cancel();
+// Scrolling yourself stops the page following the voice (it never pulls you
+// back mid-scroll); "Back to the voice" or reaching the sentence resumes it.
+if (typeof window !== "undefined") {
+  const away = () => {
+    if (useListen.getState().active && useListen.getState().following) useListen.setState({ following: false });
+  };
+  window.addEventListener("wheel", away, { passive: true });
+  window.addEventListener("touchmove", away, { passive: true });
+  window.addEventListener("keydown", (e) => {
+    if (["ArrowDown", "ArrowUp", "PageDown", "PageUp", "Home", "End", " "].includes(e.key) && !(e.target as HTMLElement)?.closest?.("input, textarea, [contenteditable]")) away();
+  });
 }
 
-/** Called when a sentence has finished: on to the next one. */
-function next(my: number, line: Line) {
-  if (my !== token) return;
-  const n = useListen.getState().at + 1;
-  if (n >= useListen.getState().queue.length) {
-    useListen.setState({ playing: false });
-    clearMark();
-    return;
-  }
-  useListen.setState({ at: n });
-  // A short breath after a heading.
-  if (line.heading) setTimeout(() => my === token && speak(), 350);
-  else speak();
-}
+/**
+ * The player. Sentences are made a good way ahead (about half a minute) and
+ * each is scheduled on the audio clock to start exactly when the one before
+ * ends — so playback runs on its own, unaffected by scrolling or anything else
+ * the page is doing. A light ticker only moves the highlight along.
+ */
+const AHEAD_SECONDS = 30;
+const AHEAD_SENTENCES = 8;
 
-function speak() {
-  const my = ++token;
-  const { queue, at } = useListen.getState();
-  const line = queue[at];
-  if (!line) {
-    useListen.setState({ playing: false });
-    clearMark();
-    return;
-  }
-  mark();
-  void speakNatural(my, line, chosen().slice("natural:".length));
-}
+/** For checking playback: how often speech ran dry mid-reading. */
+export const stats = { stalls: 0 };
+if (typeof window !== "undefined") (window as unknown as { kenningListen?: unknown }).kenningListen = { stats, at: () => useListen.getState().at };
 
-async function speakNatural(my: number, line: Line, id: string) {
-  const v = platform.voices!;
-  try {
-    if (useListen.getState().natural?.state !== "ready") {
-      useListen.setState({ waiting: true });
-      const s = await v.prepare();
-      useListen.setState({ natural: s });
-      if (s.state !== "ready") throw new Error(s.state === "error" ? s.message : "The natural voices aren't ready.");
-    }
-    if (my !== token) return;
-    const { at, queue } = useListen.getState();
-    const buffer = audio.get(at, line.say, id);
-    // Make the next sentences while this one plays.
-    for (let k = 1; k <= 2 && at + k < queue.length; k++) audio.get(at + k, queue[at + k].say, id);
-    if (!audio.ready(at)) useListen.setState({ waiting: true });
-    const buf = await buffer;
-    if (my !== token) return;
-    useListen.setState({ waiting: false });
-    audio.play(buf, () => next(my, line));
-  } catch (e) {
-    if (my !== token || /cancelled/.test(String(e))) return;
-    useListen.setState({ waiting: false, playing: false, error: "The voice stopped. Press play to try again." });
-  }
-}
-
-/** Natural-voice audio: made ahead per sentence, played through Web Audio. */
-const audio = (() => {
+const player = (() => {
   let ctx: AudioContext | null = null;
-  let source: AudioBufferSourceNode | null = null;
-  const made = new Map<number, { key: string; p: Promise<AudioBuffer>; done: boolean }>();
-  const context = () => (ctx ??= new AudioContext());
+  let gen = 0;
+  let key = "";
+  const made = new Map<number, Promise<AudioBuffer>>();
+  let scheduled: { i: number; start: number; end: number; src: AudioBufferSourceNode }[] = [];
+  let next = 0;
+  let lastEnd = 0;
+  let ticker: number | null = null;
+  const context = () => (ctx ??= new AudioContext({ latencyHint: "playback" }));
+
+  const want = () => `${chosen()}|${useListen.getState().rate}`;
+
+  function fetch(i: number): Promise<AudioBuffer> {
+    if (key !== want()) {
+      made.clear();
+      key = want();
+    }
+    let p = made.get(i);
+    if (!p) {
+      const { queue, rate } = useListen.getState();
+      p = platform.voices!.speak(queue[i].say, chosen(), rate).then(({ rate: hz, pcm }) => {
+        const b = context().createBuffer(1, pcm.length, hz);
+        b.copyToChannel(new Float32Array(pcm), 0);
+        return b;
+      });
+      p.catch(() => made.get(i) === p && made.delete(i));
+      made.set(i, p);
+    }
+    return p;
+  }
+
+  function silence() {
+    for (const s of scheduled) {
+      s.src.onended = null;
+      try {
+        s.src.stop();
+      } catch {
+        /* not started */
+      }
+    }
+    scheduled = [];
+  }
+
+  async function pump(g: number) {
+    const c = context();
+    while (g === gen) {
+      const { queue } = useListen.getState();
+      if (next >= queue.length) return;
+      // Keep several sentences in the making, never more than half a minute ahead.
+      for (let k = next; k < Math.min(queue.length, next + AHEAD_SENTENCES); k++) void fetch(k).catch(() => {});
+      if (lastEnd - c.currentTime > AHEAD_SECONDS) {
+        await new Promise((r) => setTimeout(r, 400));
+        continue;
+      }
+      if (lastEnd <= c.currentTime + 0.05) {
+        const silent = !scheduled.some((s) => s.end > c.currentTime);
+        if (silent && scheduled.length) stats.stalls++;
+        useListen.setState({ waiting: silent });
+      }
+      let buf: AudioBuffer;
+      try {
+        buf = await fetch(next);
+      } catch (e) {
+        if (g !== gen || /cancelled/.test(String(e))) return;
+        useListen.setState({ waiting: false, playing: false, error: "The voice stopped. Press play to try again." });
+        return;
+      }
+      if (g !== gen) return;
+      // A short breath after a heading.
+      const gap = queue[next - 1]?.heading ? 0.35 : 0.04;
+      const start = Math.max(c.currentTime + 0.05, lastEnd + gap);
+      const src = c.createBufferSource();
+      src.buffer = buf;
+      src.connect(c.destination);
+      src.start(start);
+      scheduled.push({ i: next, start, end: start + buf.duration, src });
+      lastEnd = start + buf.duration;
+      next++;
+      useListen.setState({ waiting: false });
+    }
+  }
+
+  function tick() {
+    const c = ctx;
+    if (!c) return;
+    const t = c.currentTime;
+    const st = useListen.getState();
+    const now = scheduled.find((s) => s.start <= t + 0.02 && t < s.end);
+    if (now && now.i !== st.at) {
+      useListen.setState({ at: now.i });
+      mark();
+    }
+    scheduled = scheduled.filter((s) => s.end > t - 2);
+    // Made sentences well behind are let go.
+    for (const k of made.keys()) if (k < st.at - 2) made.delete(k);
+    if (next >= st.queue.length && t > lastEnd + 0.2 && st.playing) {
+      useListen.setState({ playing: false });
+      clearMark();
+      stopTicker();
+    }
+  }
+
+  const startTicker = () => {
+    if (ticker === null) ticker = window.setInterval(tick, 150);
+  };
+  const stopTicker = () => {
+    if (ticker !== null) window.clearInterval(ticker);
+    ticker = null;
+  };
+
   return {
-    get(at: number, text: string, voice: string): Promise<AudioBuffer> {
-      const key = `${voice}|${useListen.getState().rate}|${text}`;
-      const have = made.get(at);
-      if (have && have.key === key) return have.p;
-      const entry = { key, done: false, p: null as unknown as Promise<AudioBuffer> };
-      entry.p = platform
-        .voices!.speak(text, voice, useListen.getState().rate)
-        .then(({ rate, pcm }) => {
-          const c = context();
-          const b = c.createBuffer(1, pcm.length, rate);
-          b.copyToChannel(new Float32Array(pcm), 0);
-          entry.done = true;
-          return b;
-        })
-        .catch((e) => {
-          if (made.get(at) === entry) made.delete(at);
-          throw e;
-        });
-      made.set(at, entry);
-      // Keep only what's near: earlier sentences are dropped.
-      for (const k of made.keys()) if (k < at - 1) made.delete(k);
-      return entry.p;
-    },
-    ready: (at: number) => !!made.get(at)?.done,
-    play(buf: AudioBuffer, onEnd: () => void) {
+    /** Starts reading at sentence `at` (dropping anything scheduled). */
+    play(at: number) {
+      gen++;
+      platform.voices?.cancel();
+      silence();
       const c = context();
       void c.resume();
-      const s = c.createBufferSource();
-      s.buffer = buf;
-      s.connect(c.destination);
-      s.onended = () => {
-        if (source === s) {
-          source = null;
-          onEnd();
-        }
-      };
-      source = s;
-      s.start();
+      next = at;
+      lastEnd = c.currentTime;
+      startTicker();
+      void pump(gen);
     },
-    stopSource() {
-      const s = source;
-      source = null;
-      try {
-        s?.stop();
-      } catch {
-        /* already stopped */
-      }
-      // Sentences cancelled in the main process won't arrive: forget them.
-      for (const [k, e] of made) if (!e.done) made.delete(k);
+    /** Pausing freezes the audio clock: nothing is lost, resuming is instant. */
+    pause() {
+      void ctx?.suspend();
     },
-    clear() {
+    resume(at: number) {
+      if (ctx && scheduled.length) {
+        void ctx.resume();
+        startTicker();
+      } else this.play(at);
+    },
+    /** Voice or speed changed: what was made no longer fits. */
+    forget() {
       made.clear();
+      key = "";
+    },
+    reset(clearMade = true) {
+      gen++;
+      platform.voices?.cancel();
+      silence();
+      stopTicker();
+      if (clearMade) made.clear();
+      void ctx?.resume();
     },
   };
 })();
 
-/** Highlights the sentence being read and keeps it in view. */
-function mark() {
+/** Highlights the sentence being read and, while following, keeps it in view. */
+function mark(force = false) {
   const { queue, at } = useListen.getState();
   const line = queue[at];
   if (!line) return;
@@ -337,7 +398,16 @@ function mark() {
     else registry.delete("listen");
   }
   const r = (range ?? el).getBoundingClientRect();
-  if (r.top < 90 || r.bottom > window.innerHeight - 140) (el as HTMLElement).scrollIntoView({ block: "center", behavior: "smooth" });
+  const visible = r.bottom > 60 && r.top < window.innerHeight - 100;
+  // Reached the voice again by scrolling: follow it from here.
+  if (visible && !useListen.getState().following && !force) useListen.setState({ following: true });
+  if (!useListen.getState().following && !force) return;
+  if (force || r.top < 90 || r.bottom > window.innerHeight - 140) {
+    // Centre the sentence itself (a long paragraph or list is taller than the window).
+    const scroller = el.closest<HTMLElement>("[data-testid=reader-scroll]");
+    if (scroller) scroller.scrollBy({ top: r.top + r.height / 2 - window.innerHeight * 0.45, behavior: "smooth" });
+    else (el as HTMLElement).scrollIntoView({ block: "center", behavior: "smooth" });
+  }
   useReader.getState().setPosition(line.blockId);
 }
 

@@ -1,9 +1,10 @@
 // Natural voices for Listen: Kokoro, a small neural text-to-speech model that
-// runs on this computer. The model (~90 MB) is downloaded once into the app's
+// runs on this computer, in its own background process (voice-worker.ts). The model (~90 MB) is downloaded once into the app's
 // data folder; after that, reading aloud works offline and nothing leaves the
 // machine. Sentences are spoken one at a time, in order.
 
 import { existsSync } from "node:fs";
+import { cpus } from "node:os";
 import path from "node:path";
 import type { VoiceStatus } from "../shared/ipc";
 
@@ -48,24 +49,33 @@ export function prepare(onProgress: (s: VoiceStatus) => void): Promise<VoiceStat
     progress = 0;
     const sizes = new Map<string, { loaded: number; total: number }>();
     loading = (async () => {
-      const { env } = await import("@huggingface/transformers");
+      const { env, StyleTextToSpeech2Model, AutoTokenizer } = await import("@huggingface/transformers");
       env.cacheDir = modelsDir;
       // Once the model is here, never go to the network for it.
       env.allowRemoteModels = !existsSync(modelFile());
       const { KokoroTTS } = await import("kokoro-js");
-      const model = await KokoroTTS.from_pretrained(MODEL, {
-        dtype: DTYPE,
-        device: "cpu",
-        progress_callback: (p: { status: string; file?: string; loaded?: number; total?: number }) => {
+      const progressCallback = (p: { status: string; file?: string; loaded?: number; total?: number }) => {
           if (p.status !== "progress" || !p.file || !p.total) return;
           sizes.set(p.file, { loaded: p.loaded ?? 0, total: p.total });
           // The model file is nearly all of it: follow the biggest file so the figure only grows.
           const big = [...sizes.values()].reduce((a, b) => (b.total > a.total ? b : a));
           progress = Math.max(progress, big.loaded / big.total);
           onProgress({ state: "loading", progress });
-        },
-      });
-      return model as unknown as Tts;
+      };
+      // Half the cores at most: speech keeps well ahead of playback, and scrolling
+      // and the rest of the app always have room.
+      const threads = Math.max(1, Math.min(4, Math.floor(cpus().length / 2)));
+      const [net, tokenizer] = await Promise.all([
+        StyleTextToSpeech2Model.from_pretrained(MODEL, {
+          dtype: DTYPE,
+          device: "cpu",
+          progress_callback: progressCallback,
+          session_options: { intraOpNumThreads: threads, interOpNumThreads: 1 },
+        } as never),
+        AutoTokenizer.from_pretrained(MODEL, { progress_callback: progressCallback } as never),
+      ]);
+      const Ctor = KokoroTTS as unknown as new (m: unknown, t: unknown) => Tts;
+      return new Ctor(net, tokenizer);
     })();
     loading.then(
       (m) => {

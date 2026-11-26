@@ -45,7 +45,13 @@ export function ListenBar() {
       <button type="button" aria-label="Next sentence" title="Next sentence" onClick={() => s.skip(1)}>
         <IconSkipFwd size={16} />
       </button>
-      <span className={`where ${s.waiting || loading ? "busy" : ""}`}>{status}</span>
+      {s.following || !s.playing ? (
+        <span className={`where ${s.waiting || loading ? "busy" : ""}`}>{status}</span>
+      ) : (
+        <button type="button" className="back-to-voice" onClick={() => s.follow()} title="Scroll back to the sentence being read">
+          ↓ Back to the voice
+        </button>
+      )}
       <select aria-label="Speed" value={s.rate} onChange={(e) => s.setRate(Number(e.target.value))}>
         {RATES.map((r) => (
           <option key={r} value={r}>

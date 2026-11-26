@@ -1392,3 +1392,18 @@ button {
   color: var(--pencil);
   font-weight: 500;
 }
+
+/* Listen: after scrolling away yourself, one click returns to the voice. */
+.listen-bar .back-to-voice {
+  width: auto;
+  height: 30px;
+  padding: 0 0.85rem;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.12);
+  color: #f2ebdf;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.listen-bar .back-to-voice:hover {
+  background: rgb(255 255 255 / 0.2);
+}
